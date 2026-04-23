@@ -1,0 +1,27 @@
+---
+# ─── Xray runtime layout ──────────────────────────────────────────
+xray_install_version: latest          # tag or 'latest' — passed to XTLS install-release.sh
+xray_config_dir: /usr/local/etc/xray
+xray_assets_dir: /usr/local/share/xray
+xray_log_dir: /var/log/xray
+xray_service_name: xray
+
+# ─── Geodata auto-update ──────────────────────────────────────────
+geodata_update_enabled: true
+geodata_update_cron:
+  minute: "0"
+  hour: "4"
+  weekday: "0"        # Sunday
+
+# ─── Reality SNI target ───────────────────────────────────────────
+# Must be a TLS-1.3 host reachable from the VPS, non-CDN, and not on
+# a blocklist. www.microsoft.com is the common default; change if needed.
+reality_dest_host: "www.microsoft.com"
+reality_dest_port: 443
+reality_fingerprint: "chrome"
+
+# ─── Firewall ────────────────────────────────────────────────────
+firewall_enabled: true
+firewall_allowed_tcp_ports:
+  - 22
+  - 443

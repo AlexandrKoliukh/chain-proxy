@@ -1,0 +1,25 @@
+---
+- name: Validate that all required entry variables are filled in
+  assert:
+    that:
+      - entry_client_uuid  | length > 0
+      - entry_private_key  | length > 0
+      - entry_public_key   | length > 0
+      - entry_short_id     | length > 0
+      - link_uuid          | length > 0
+      - link_public_key    | length > 0
+      - link_short_id      | length > 0
+      - exit_address is defined and exit_address | length > 0
+    fail_msg: >-
+      Missing env vars (ENTRY_*/LINK_*/IP_VPS2). Run `make gen-keys`
+      (writes into .env) and make sure .env has IP_VPS1 and IP_VPS2.
+
+- name: Deploy Xray entry config (VLESS+Reality in, VLESS+Reality chain out)
+  template:
+    src: config.json.j2
+    dest: "{{ xray_config_dir }}/config.json"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/local/bin/xray -test -config %s"
+  notify: restart xray

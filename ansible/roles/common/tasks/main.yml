@@ -1,0 +1,65 @@
+---
+- name: Wait for apt/dpkg locks to release
+  shell: |
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+  changed_when: false
+
+- name: Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install baseline packages
+  apt:
+    name:
+      - curl
+      - ca-certificates
+      - jq
+      - unzip
+      - ufw
+      - chrony
+      - openssl
+      - gnupg
+      - python3
+    state: present
+
+- name: Ensure chrony is running (Reality needs accurate clock)
+  systemd:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Configure UFW defaults
+  when: firewall_enabled
+  block:
+    - name: Allow inbound TCP ports
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: "{{ firewall_allowed_tcp_ports }}"
+
+    - name: Set default incoming policy to deny
+      ufw:
+        default: deny
+        direction: incoming
+
+    - name: Set default outgoing policy to allow
+      ufw:
+        default: allow
+        direction: outgoing
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+
+- name: Enable BBR congestion control (better throughput for proxy traffic)
+  copy:
+    dest: /etc/sysctl.d/99-chain-proxy.conf
+    mode: "0644"
+    content: |
+      net.core.default_qdisc = fq
+      net.ipv4.tcp_congestion_control = bbr
+      net.ipv4.tcp_fastopen = 3
+      net.ipv4.ip_forward = 1
+  notify: apply sysctl

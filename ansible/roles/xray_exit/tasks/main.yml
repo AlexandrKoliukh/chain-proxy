@@ -1,0 +1,20 @@
+---
+- name: Validate that all required exit variables are filled in
+  assert:
+    that:
+      - link_uuid         | length > 0
+      - link_short_id     | length > 0
+      - exit_private_key  | length > 0
+    fail_msg: >-
+      Missing env vars (LINK_UUID / LINK_SHORT_ID / LINK_PRIVATE_KEY).
+      Run `make gen-keys` to populate .env.
+
+- name: Deploy Xray exit config (VLESS+Reality in → freedom out)
+  template:
+    src: config.json.j2
+    dest: "{{ xray_config_dir }}/config.json"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "/usr/local/bin/xray -test -config %s"
+  notify: restart xray

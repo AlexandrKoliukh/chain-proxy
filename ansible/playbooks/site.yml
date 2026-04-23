@@ -1,0 +1,76 @@
+---
+# ═══════════════════════════════════════════════════════════════════
+# chain-proxy: Xray VLESS+Reality two-hop chain
+#   Client ──[Reality]──▶ VPS1 (home, entry) ──[Reality]──▶ VPS2 (foreign, exit) ──▶ Internet
+#                                │
+#                                └── geoip:ru / geosite:ru → direct out of VPS1
+#                                    geoip:private          → block
+# ═══════════════════════════════════════════════════════════════════
+
+- name: Baseline — all nodes
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - xray
+
+- name: Configure VPS1 (entry, home)
+  hosts: entry
+  become: true
+  gather_facts: false
+  roles:
+    - xray_entry
+
+- name: Configure VPS2 (exit, foreign)
+  hosts: exit
+  become: true
+  gather_facts: false
+  roles:
+    - xray_exit
+
+- name: Print verification hints
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    _entry: "{{ hostvars[groups['entry'][0]] }}"
+    _vless_uri: "vless://{{ _entry.entry_client_uuid | default('<CLIENT_UUID>') }}@{{ _entry.ansible_host }}:{{ _entry.entry_listen_port | default(443) }}?type=tcp&security=reality&pbk={{ _entry.entry_public_key | default('<ENTRY_PUB>') }}&fp={{ _entry.reality_fingerprint | default('chrome') }}&sni={{ _entry.reality_dest_host | default('www.microsoft.com') }}&sid={{ _entry.entry_short_id | default('<ENTRY_SID>') }}&flow=xtls-rprx-vision#chain-ru"
+  tasks:
+    - name: Deployment summary
+      debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════════"
+          - "✓ Deployment complete."
+          - ""
+          - "CLIENT CONNECTION (paste into Amnezia / v2rayN / NekoBox):"
+          - ""
+          - "  {{ _vless_uri }}"
+          - ""
+          - "HOW TO VERIFY (from a client connected through this chain):"
+          - ""
+          - "  # Non-RU traffic must egress via VPS2 (foreign):"
+          - "  curl -s https://api.ipify.org          # → VPS2 (foreign) IP"
+          - "  curl -s https://ifconfig.me            # → VPS2 (foreign) IP"
+          - ""
+          - "  # RU-routed (should exit VPS1, see Russian content):"
+          - "  curl -sI https://yandex.ru | head -n 1"
+          - "  curl -sI https://mail.ru   | head -n 1"
+          - "  curl -sI https://vk.com    | head -n 1"
+          - ""
+          - "  # Non-RU (should tunnel through VPS2, no captcha on Google):"
+          - "  curl -sI https://www.google.com     | head -n 1"
+          - "  curl -sI https://www.cloudflare.com | head -n 1"
+          - ""
+          - "SERVICE HEALTH:"
+          - ""
+          - "  make status     # systemctl status xray on both"
+          - "  make logs       # journalctl -u xray -n 50"
+          - ""
+          - "DEBUG TIPS:"
+          - ""
+          - "  • Reality needs accurate clock — check chrony:"
+          - "      ansible -i ansible/inventory.yml all -b -a 'chronyc tracking'"
+          - "  • If RU routing is broken, verify geodata is present on VPS1:"
+          - "      ansible -i ansible/inventory.yml entry -b -a 'ls -la /usr/local/share/xray/'"
+          - "═══════════════════════════════════════════════════════════════"

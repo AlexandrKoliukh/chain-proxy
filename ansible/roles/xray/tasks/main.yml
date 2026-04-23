@@ -1,0 +1,83 @@
+---
+# Install Xray using the upstream XTLS install-release.sh.
+# The script handles: binary download from GitHub releases, systemd unit,
+# nobody user, /usr/local/etc/xray layout, geoip.dat / geosite.dat.
+# Docs: https://github.com/XTLS/Xray-install
+
+- name: Ensure Xray config directory exists
+  file:
+    path: "{{ xray_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Ensure Xray log directory exists with writable ownership
+  file:
+    path: "{{ xray_log_dir }}"
+    state: directory
+    owner: nobody
+    group: nogroup
+    mode: "0775"
+    recurse: true
+
+- name: Stat existing Xray binary
+  stat:
+    path: /usr/local/bin/xray
+  register: xray_binary
+
+- name: Install / update Xray-core from GitHub releases
+  shell: |
+    set -o pipefail
+    curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
+      | bash -s -- install{% if xray_install_version != 'latest' %} --version {{ xray_install_version }}{% endif %}
+  args:
+    executable: /bin/bash
+  register: xray_install
+  changed_when: "'installed' in (xray_install.stdout | lower) or not xray_binary.stat.exists"
+  notify: restart xray
+
+- name: Show installed Xray version
+  command: /usr/local/bin/xray version
+  register: xray_version_out
+  changed_when: false
+
+- name: Install / update geodata (geoip.dat + geosite.dat)
+  shell: |
+    curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
+      | bash -s -- install-geodata
+  args:
+    executable: /bin/bash
+  register: geodata_install
+  changed_when: "'installation of geodata is complete' in (geodata_install.stdout | lower)"
+
+- name: Drop weekly geodata updater script
+  copy:
+    dest: /usr/local/bin/xray-update-geodata.sh
+    owner: root
+    group: root
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Auto-installed by chain-proxy ansible role. Refreshes geoip/geosite
+      # and reloads Xray. Runs from cron — see /etc/cron.d/xray-geodata.
+      set -euo pipefail
+      curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
+        | bash -s -- install-geodata
+      systemctl reload-or-restart {{ xray_service_name }}
+
+- name: Schedule weekly geodata update
+  cron:
+    name: "xray geodata weekly refresh"
+    minute: "{{ geodata_update_cron.minute }}"
+    hour: "{{ geodata_update_cron.hour }}"
+    weekday: "{{ geodata_update_cron.weekday }}"
+    job: "/usr/local/bin/xray-update-geodata.sh >>/var/log/xray-geodata.log 2>&1"
+    user: root
+  when: geodata_update_enabled
+
+- name: Ensure Xray is enabled at boot
+  systemd:
+    name: "{{ xray_service_name }}"
+    enabled: true
+    daemon_reload: true

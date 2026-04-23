@@ -1,0 +1,7 @@
+---
+- name: restart xray
+  systemd:
+    name: "{{ xray_service_name }}"
+    state: restarted
+    enabled: true
+    daemon_reload: true

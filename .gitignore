@@ -1,0 +1,7 @@
+ansible/.facts/
+ansible/*.retry
+*.swp
+.DS_Store
+
+.env
+/.idea/

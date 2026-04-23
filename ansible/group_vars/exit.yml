@@ -1,0 +1,11 @@
+---
+# ╔════════════════════════════════════════════════════════════════╗
+# ║ VPS2 (foreign server, exit).                                   ║
+# ║ Values are read from environment variables (see .env).         ║
+# ║ Populate them with `make gen-keys` — no manual editing needed. ║
+# ╚════════════════════════════════════════════════════════════════╝
+
+exit_listen_port: 443
+link_uuid:         "{{ lookup('env', 'LINK_UUID') }}"
+link_short_id:     "{{ lookup('env', 'LINK_SHORT_ID') }}"
+exit_private_key:  "{{ lookup('env', 'LINK_PRIVATE_KEY') }}"
