@@ -48,6 +48,7 @@ LINK_PRIV=$( printf '%s\n' "$LINK_KEYS"  | parse_field 'private')
 LINK_PUB=$(  printf '%s\n' "$LINK_KEYS"  | parse_field 'public')
 
 ENTRY_UUID_VAL=$(gen_uuid)
+ENTRY_FRIENDS_UUID_VAL=$(gen_uuid)
 LINK_UUID_VAL=$(gen_uuid)
 ENTRY_SID_VAL=$(gen_sid)
 LINK_SID_VAL=$(gen_sid)
@@ -76,10 +77,11 @@ awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
 # Trim trailing blank lines, then append fresh block.
 awk 'BEGIN{RS=""; ORS=""} {print}' "$TMP_FILE" > "$ENV_FILE"
 printf '\n\n%s\n' "$BEGIN_MARK"       >> "$ENV_FILE"
-printf 'ENTRY_CLIENT_UUID=%s\n' "$ENTRY_UUID_VAL" >> "$ENV_FILE"
-printf 'ENTRY_PRIVATE_KEY=%s\n' "$ENTRY_PRIV"    >> "$ENV_FILE"
-printf 'ENTRY_PUBLIC_KEY=%s\n'  "$ENTRY_PUB"     >> "$ENV_FILE"
-printf 'ENTRY_SHORT_ID=%s\n'    "$ENTRY_SID_VAL" >> "$ENV_FILE"
+printf 'ENTRY_CLIENT_UUID=%s\n'  "$ENTRY_UUID_VAL"         >> "$ENV_FILE"
+printf 'ENTRY_FRIENDS_UUID=%s\n' "$ENTRY_FRIENDS_UUID_VAL" >> "$ENV_FILE"
+printf 'ENTRY_PRIVATE_KEY=%s\n'  "$ENTRY_PRIV"             >> "$ENV_FILE"
+printf 'ENTRY_PUBLIC_KEY=%s\n'   "$ENTRY_PUB"              >> "$ENV_FILE"
+printf 'ENTRY_SHORT_ID=%s\n'     "$ENTRY_SID_VAL"          >> "$ENV_FILE"
 printf 'LINK_UUID=%s\n'         "$LINK_UUID_VAL" >> "$ENV_FILE"
 printf 'LINK_PUBLIC_KEY=%s\n'   "$LINK_PUB"      >> "$ENV_FILE"
 printf 'LINK_PRIVATE_KEY=%s\n'  "$LINK_PRIV"     >> "$ENV_FILE"
@@ -102,7 +104,10 @@ cat >&2 <<EOF
   Ansible will read them automatically on the next \`make deploy\`.
   You don't need to touch group_vars/*.yml — the values are pulled from env.
 
-─── client VLESS URI (paste into Amnezia / v2rayN / NekoBox) ─────
-vless://$ENTRY_UUID_VAL@$VPS1_IP:443?type=tcp&security=reality&pbk=$ENTRY_PUB&fp=chrome&sni=www.microsoft.com&sid=$ENTRY_SID_VAL&flow=xtls-rprx-vision#chain-ru
+─── client VLESS URI: admin (paste into Amnezia / v2rayN / NekoBox) ─────
+vless://$ENTRY_UUID_VAL@$VPS1_IP:443?type=tcp&security=reality&pbk=$ENTRY_PUB&fp=chrome&sni=www.microsoft.com&sid=$ENTRY_SID_VAL&flow=xtls-rprx-vision#chain-ru-admin
+
+─── client VLESS URI: friends ───────────────────────────────────────────
+vless://$ENTRY_FRIENDS_UUID_VAL@$VPS1_IP:443?type=tcp&security=reality&pbk=$ENTRY_PUB&fp=chrome&sni=www.microsoft.com&sid=$ENTRY_SID_VAL&flow=xtls-rprx-vision#chain-ru-friends
 
 EOF

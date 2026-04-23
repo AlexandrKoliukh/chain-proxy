@@ -5,6 +5,9 @@ xray_config_dir: /usr/local/etc/xray
 xray_assets_dir: /usr/local/share/xray
 xray_log_dir: /var/log/xray
 xray_service_name: xray
+# Override to 'info' or 'debug' temporarily for routing diagnostics:
+#   ansible-playbook ... -e xray_loglevel=info
+xray_loglevel: warning
 
 # ─── Geodata auto-update ──────────────────────────────────────────
 geodata_update_enabled: true

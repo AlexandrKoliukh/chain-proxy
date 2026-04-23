@@ -1,6 +1,34 @@
 {
   "log": {
-    "loglevel": "warning"
+    "loglevel": "{{ xray_loglevel | default('warning') }}",
+    "access": "{{ xray_log_dir }}/access.log",
+    "error": "{{ xray_log_dir }}/error.log"
+  },
+
+  "dns": {
+    "servers": [
+      {
+        "address": "77.88.8.8",
+        "port": 53,
+        "domains": [
+          "geosite:category-ru",
+          "geosite:yandex",
+          "geosite:vk",
+          "geosite:mailru",
+          "domain:kinopoisk.ru",
+          "domain:kinopoisk-ott.ru",
+          "domain:yandex.ru",
+          "domain:yandex.net",
+          "domain:vk.com"
+        ]
+      },
+      {
+        "address": "https+local://1.1.1.1/dns-query",
+        "port": 443
+      }
+    ],
+    "queryStrategy": "UseIP",
+    "disableCache": false
   },
 
   "inbounds": [
@@ -11,10 +39,14 @@
       "protocol": "vless",
       "settings": {
         "clients": [
+{% for c in entry_clients %}
           {
-            "id": "{{ entry_client_uuid }}",
+            "id": "{{ c.id }}",
+            "email": "{{ c.email }}",
             "flow": "xtls-rprx-vision"
-          }
+          }{% if not loop.last %},{% endif %}
+
+{% endfor %}
         ],
         "decryption": "none"
       },
@@ -90,12 +122,17 @@
       },
       {
         "type": "field",
-        "ip": ["geoip:ru"],
+        "domain": [
+          "geosite:category-ru",
+          "geosite:yandex",
+          "geosite:vk",
+          "geosite:mailru"
+        ],
         "outboundTag": "direct"
       },
       {
         "type": "field",
-        "domain": ["geosite:category-ru"],
+        "ip": ["geoip:ru"],
         "outboundTag": "direct"
       },
       {

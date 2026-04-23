@@ -35,7 +35,14 @@
   gather_facts: false
   vars:
     _entry: "{{ hostvars[groups['entry'][0]] }}"
-    _vless_uri: "vless://{{ _entry.entry_client_uuid | default('<CLIENT_UUID>') }}@{{ _entry.ansible_host }}:{{ _entry.entry_listen_port | default(443) }}?type=tcp&security=reality&pbk={{ _entry.entry_public_key | default('<ENTRY_PUB>') }}&fp={{ _entry.reality_fingerprint | default('chrome') }}&sni={{ _entry.reality_dest_host | default('www.microsoft.com') }}&sid={{ _entry.entry_short_id | default('<ENTRY_SID>') }}&flow=xtls-rprx-vision#chain-ru"
+    _vless_uris: >-
+      {{ _entry.entry_clients | map('combine', {'_uri':
+        'vless://__ID__@' ~ _entry.ansible_host ~ ':' ~ (_entry.entry_listen_port | default(443)) ~
+        '?type=tcp&security=reality&pbk=' ~ (_entry.entry_public_key | default('<ENTRY_PUB>')) ~
+        '&fp=' ~ (_entry.reality_fingerprint | default('chrome')) ~
+        '&sni=' ~ (_entry.reality_dest_host | default('www.microsoft.com')) ~
+        '&sid=' ~ (_entry.entry_short_id | default('<ENTRY_SID>')) ~
+        '&flow=xtls-rprx-vision#chain-ru-__EMAIL__'}) | list }}
   tasks:
     - name: Deployment summary
       debug:
@@ -43,9 +50,16 @@
           - "═══════════════════════════════════════════════════════════════"
           - "✓ Deployment complete."
           - ""
-          - "CLIENT CONNECTION (paste into Amnezia / v2rayN / NekoBox):"
+          - "CLIENT CONNECTIONS (paste into Amnezia / v2rayN / NekoBox):"
           - ""
-          - "  {{ _vless_uri }}"
+          - "  [{{ item.email }}]  {{ item._uri | replace('__ID__', item.id) | replace('__EMAIL__', item.email) }}"
+      loop: "{{ _vless_uris }}"
+      loop_control:
+        label: "{{ item.email }}"
+
+    - name: Verification hints
+      debug:
+        msg:
           - ""
           - "HOW TO VERIFY (from a client connected through this chain):"
           - ""

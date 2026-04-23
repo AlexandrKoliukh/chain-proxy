@@ -7,10 +7,19 @@
 
 # ─── Client → VPS1 (entry inbound) ────────────────────────────────
 entry_listen_port: 443
-entry_client_uuid: "{{ lookup('env', 'ENTRY_CLIENT_UUID') }}"
 entry_private_key: "{{ lookup('env', 'ENTRY_PRIVATE_KEY') }}"
 entry_public_key:  "{{ lookup('env', 'ENTRY_PUBLIC_KEY') }}"
 entry_short_id:    "{{ lookup('env', 'ENTRY_SHORT_ID') }}"
+
+# Список клиентов входного inbound. Каждый клиент = отдельный VLESS-UUID,
+# но все они делят один Reality-серверный ключ и shortId. Чтобы добавить
+# ещё одного — заведите новую env-переменную (например, ENTRY_GUEST_UUID),
+# экспортируйте её в Makefile, сгенерируйте UUID и допишите запись сюда.
+entry_clients:
+  - email: "admin"
+    id: "{{ lookup('env', 'ENTRY_CLIENT_UUID') }}"
+  - email: "friends"
+    id: "{{ lookup('env', 'ENTRY_FRIENDS_UUID') }}"
 
 # ─── VPS1 → VPS2 (chain-link outbound) ────────────────────────────
 # `link_public_key` must be the public half of `exit_private_key` on VPS2.

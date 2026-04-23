@@ -13,7 +13,7 @@ WITH_KEY     := SSH_KEY=$(SSH_KEY) bash $(ANSIBLE_DIR)/scripts/with-ssh-key.sh
 # в окружение дочерних процессов (ansible читает их через lookup('env', ...)).
 -include .env
 export IP_VPS1 IP_VPS2
-export ENTRY_CLIENT_UUID ENTRY_PRIVATE_KEY ENTRY_PUBLIC_KEY ENTRY_SHORT_ID
+export ENTRY_CLIENT_UUID ENTRY_FRIENDS_UUID ENTRY_PRIVATE_KEY ENTRY_PUBLIC_KEY ENTRY_SHORT_ID
 export LINK_UUID LINK_PUBLIC_KEY LINK_PRIVATE_KEY LINK_SHORT_ID
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 
