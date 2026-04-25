@@ -16,6 +16,20 @@ geodata_update_cron:
   hour: "4"
   weekday: "0"        # Sunday
 
+# ─── Custom RU/BY geoip from hydraponique/roscomvpn-geoip ────────
+# Replaces the XTLS-shipped geoip.dat with a curated build from three
+# independent sources (GeoLite2 + IPinfo + DB-IP) plus hand-picked
+# Yandex/VK/Mail.Ru/CDNVideo/Apple-Push CIDRs. Categories shipped:
+# `geoip:direct` (RU + BY + curated) and `geoip:private`. geosite.dat
+# stays from XTLS — this repo is geoip-only. Toggle off to skip the
+# download (e.g. their release is temporarily broken); the previously
+# cached geoip.dat keeps working as long as it still contains `direct`.
+# Full revert (back to `geoip:ru`) needs a `git revert`, not just the
+# toggle, since config.json.j2 also references `geoip:direct`.
+roscomvpn_geoip_enabled: true
+roscomvpn_geoip_url: "https://github.com/hydraponique/roscomvpn-geoip/releases/latest/download/geoip.dat"
+roscomvpn_geoip_sha256_url: "https://github.com/hydraponique/roscomvpn-geoip/releases/latest/download/geoip.dat.sha256"
+
 # ─── Reality SNI target ───────────────────────────────────────────
 # Must be a TLS-1.3 host reachable from the VPS, non-CDN, and not on
 # a blocklist. www.microsoft.com is the common default; change if needed.

@@ -51,6 +51,43 @@
   register: geodata_install
   changed_when: "'installation of geodata is complete' in (geodata_install.stdout | lower)"
 
+- name: Overwrite geoip.dat with hydraponique/roscomvpn-geoip release
+  when: roscomvpn_geoip_enabled
+  block:
+    - name: Download roscomvpn geoip.dat
+      get_url:
+        url: "{{ roscomvpn_geoip_url }}"
+        dest: "{{ xray_assets_dir }}/geoip.dat.new"
+        mode: "0644"
+        force: true
+
+    - name: Download roscomvpn geoip.dat sha256 sidecar
+      get_url:
+        url: "{{ roscomvpn_geoip_sha256_url }}"
+        dest: "{{ xray_assets_dir }}/geoip.dat.new.sha256"
+        mode: "0644"
+        force: true
+
+    - name: Verify roscomvpn geoip.dat checksum
+      shell: |
+        set -euo pipefail
+        cd "{{ xray_assets_dir }}"
+        expected=$(awk '{print $1}' geoip.dat.new.sha256)
+        actual=$(sha256sum geoip.dat.new | awk '{print $1}')
+        [ "$expected" = "$actual" ]
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Activate roscomvpn geoip.dat
+      command: mv "{{ xray_assets_dir }}/geoip.dat.new" "{{ xray_assets_dir }}/geoip.dat"
+      notify: restart xray
+
+    - name: Cleanup sha256 sidecar
+      file:
+        path: "{{ xray_assets_dir }}/geoip.dat.new.sha256"
+        state: absent
+
 - name: Drop weekly geodata updater script
   copy:
     dest: /usr/local/bin/xray-update-geodata.sh
@@ -64,6 +101,19 @@
       set -euo pipefail
       curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
         | bash -s -- install-geodata
+      {% if roscomvpn_geoip_enabled %}
+      tmp=$(mktemp -d)
+      trap 'rm -rf "$tmp"' EXIT
+      curl -fsSL "{{ roscomvpn_geoip_url }}" -o "$tmp/geoip.dat"
+      curl -fsSL "{{ roscomvpn_geoip_sha256_url }}" -o "$tmp/geoip.dat.sha256"
+      expected=$(awk '{print $1}' "$tmp/geoip.dat.sha256")
+      actual=$(sha256sum "$tmp/geoip.dat" | awk '{print $1}')
+      if [ "$expected" != "$actual" ]; then
+        echo "roscomvpn geoip.dat sha256 mismatch (expected $expected, got $actual)" >&2
+        exit 1
+      fi
+      install -m 0644 "$tmp/geoip.dat" {{ xray_assets_dir }}/geoip.dat
+      {% endif %}
       systemctl reload-or-restart {{ xray_service_name }}
 
 - name: Schedule weekly geodata update
