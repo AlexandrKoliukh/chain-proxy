@@ -21,13 +21,13 @@ entry_clients:
   - email: "friends"
     id: "{{ lookup('env', 'ENTRY_FRIENDS_UUID') }}"
 
-# ─── VPS1 → VPS2 (chain-link outbound) ────────────────────────────
-# `link_public_key` must be the public half of `exit_private_key` on VPS2.
-link_uuid:         "{{ lookup('env', 'LINK_UUID') }}"
-link_public_key:   "{{ lookup('env', 'LINK_PUBLIC_KEY') }}"
-link_short_id:     "{{ lookup('env', 'LINK_SHORT_ID') }}"
+# ─── VPS1 → VPS2 (WireGuard tunnel) ───────────────────────────────
+# Xray's chain-proxy outbound is now a `freedom` proto with sockopt.mark
+# set to `wg_fwmark`; the kernel sends those packets via wg0 to VPS2.
+wg_private_key:     "{{ lookup('env', 'WG_VPS1_PRIVATE') }}"
+wg_peer_public_key: "{{ lookup('env', 'WG_VPS2_PUBLIC') }}"
+wg_peer_endpoint:   "{{ hostvars[groups['exit'][0]].ansible_host }}:{{ wg_listen_port }}"
 
-# Address of VPS2 — auto-resolved from inventory. Override if you want to
-# use a domain name or a private link IP for the inter-VPS hop.
-exit_address: "{{ hostvars[groups['exit'][0]].ansible_host }}"
-exit_port: 443
+# UDP/51820 must reach VPS2 — TCP/443 stays open for client Reality.
+firewall_allowed_udp_ports:
+  - "{{ wg_listen_port }}"

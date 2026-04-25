@@ -1,8 +1,6 @@
 {
   "log": {
-    "loglevel": "{{ xray_loglevel | default('warning') }}",
-    "access": "{{ xray_log_dir }}/access.log",
-    "error": "{{ xray_log_dir }}/error.log"
+    "loglevel": "{{ xray_loglevel | default('warning') }}"
   },
 
   "dns": {
@@ -73,32 +71,10 @@
   "outbounds": [
     {
       "tag": "chain-proxy",
-      "protocol": "vless",
-      "settings": {
-        "vnext": [
-          {
-            "address": "{{ exit_address }}",
-            "port": {{ exit_port }},
-            "users": [
-              {
-                "id": "{{ link_uuid }}",
-                "encryption": "none",
-                "flow": "xtls-rprx-vision"
-              }
-            ]
-          }
-        ]
-      },
+      "protocol": "freedom",
+      "settings": { "domainStrategy": "UseIP" },
       "streamSettings": {
-        "network": "tcp",
-        "security": "reality",
-        "realitySettings": {
-          "serverName": "{{ reality_dest_host }}",
-          "fingerprint": "{{ reality_fingerprint }}",
-          "publicKey": "{{ link_public_key }}",
-          "shortId":   "{{ link_short_id }}",
-          "spiderX":   "/"
-        }
+        "sockopt": { "mark": {{ wg_fwmark }} }
       }
     },
     {

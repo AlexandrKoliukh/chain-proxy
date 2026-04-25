@@ -36,6 +36,28 @@ gen_x25519() {
   fi
 }
 
+# WireGuard keypairs: VPS1 ↔ VPS2 inter-VPS tunnel.
+# Output two lines: "<private>\n<public>".
+gen_wg() {
+  local priv pub
+  if have wg; then
+    priv=$(wg genkey)
+    pub=$(printf '%s' "$priv" | wg pubkey)
+  elif have docker; then
+    priv=$(docker run --rm --entrypoint sh linuxserver/wireguard:latest -c 'wg genkey')
+    pub=$(docker run --rm --entrypoint sh linuxserver/wireguard:latest -c "echo '$priv' | wg pubkey")
+  elif have podman; then
+    priv=$(podman run --rm --entrypoint sh docker.io/linuxserver/wireguard:latest -c 'wg genkey')
+    pub=$(podman run --rm --entrypoint sh docker.io/linuxserver/wireguard:latest -c "echo '$priv' | wg pubkey")
+  else
+    echo "ERROR: install wireguard-tools (or docker/podman) to generate WG keys." >&2
+    echo "       macOS:  brew install wireguard-tools" >&2
+    echo "       Linux:  sudo apt install wireguard-tools" >&2
+    exit 1
+  fi
+  printf '%s\n%s\n' "$priv" "$pub"
+}
+
 parse_field() { awk -F': *' -v k="$1" 'tolower($1) ~ tolower(k) { print $2; exit }'; }
 
 echo "Generating x25519 keypairs (entry + chain-link) ..." >&2
@@ -46,6 +68,14 @@ ENTRY_PRIV=$(printf '%s\n' "$ENTRY_KEYS" | parse_field 'private')
 ENTRY_PUB=$( printf '%s\n' "$ENTRY_KEYS" | parse_field 'public')
 LINK_PRIV=$( printf '%s\n' "$LINK_KEYS"  | parse_field 'private')
 LINK_PUB=$(  printf '%s\n' "$LINK_KEYS"  | parse_field 'public')
+
+echo "Generating WireGuard keypairs (VPS1 + VPS2) ..." >&2
+WG_VPS1_KEYS=$(gen_wg)
+WG_VPS2_KEYS=$(gen_wg)
+WG_VPS1_PRIV=$(printf '%s\n' "$WG_VPS1_KEYS" | sed -n '1p')
+WG_VPS1_PUB=$( printf '%s\n' "$WG_VPS1_KEYS" | sed -n '2p')
+WG_VPS2_PRIV=$(printf '%s\n' "$WG_VPS2_KEYS" | sed -n '1p')
+WG_VPS2_PUB=$( printf '%s\n' "$WG_VPS2_KEYS" | sed -n '2p')
 
 ENTRY_UUID_VAL=$(gen_uuid)
 ENTRY_FRIENDS_UUID_VAL=$(gen_uuid)
@@ -86,6 +116,10 @@ printf 'LINK_UUID=%s\n'         "$LINK_UUID_VAL" >> "$ENV_FILE"
 printf 'LINK_PUBLIC_KEY=%s\n'   "$LINK_PUB"      >> "$ENV_FILE"
 printf 'LINK_PRIVATE_KEY=%s\n'  "$LINK_PRIV"     >> "$ENV_FILE"
 printf 'LINK_SHORT_ID=%s\n'     "$LINK_SID_VAL"  >> "$ENV_FILE"
+printf 'WG_VPS1_PRIVATE=%s\n'   "$WG_VPS1_PRIV"  >> "$ENV_FILE"
+printf 'WG_VPS1_PUBLIC=%s\n'    "$WG_VPS1_PUB"   >> "$ENV_FILE"
+printf 'WG_VPS2_PRIVATE=%s\n'   "$WG_VPS2_PRIV"  >> "$ENV_FILE"
+printf 'WG_VPS2_PUBLIC=%s\n'    "$WG_VPS2_PUB"   >> "$ENV_FILE"
 printf '%s\n' "$END_MARK"                        >> "$ENV_FILE"
 rm -f "$TMP_FILE"
 

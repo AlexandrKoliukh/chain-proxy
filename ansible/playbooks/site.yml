@@ -1,33 +1,35 @@
 ---
 # ═══════════════════════════════════════════════════════════════════
-# chain-proxy: Xray VLESS+Reality two-hop chain
-#   Client ──[Reality]──▶ VPS1 (home, entry) ──[Reality]──▶ VPS2 (foreign, exit) ──▶ Internet
+# chain-proxy: VLESS+Reality (client → VPS1) + WireGuard (VPS1 → VPS2)
+#   Client ──[Reality/TCP]──▶ VPS1 (Xray entry)
 #                                │
-#                                └── geoip:ru / geosite:ru → direct out of VPS1
-#                                    geoip:private          → block
+#                                ├── geoip:ru / geosite:ru → freedom (RU exit via VPS1)
+#                                ├── geoip:private          → block
+#                                └── default → freedom + sockopt.mark
+#                                                  │
+#                                          ip rule fwmark → wg0
+#                                                  │
+#                                          WireGuard UDP/51820
+#                                                  │
+#                                                  ▼
+#                                          VPS2 wg0 → MASQUERADE → Internet
 # ═══════════════════════════════════════════════════════════════════
 
-- name: Baseline — all nodes
+- name: Baseline — all nodes (firewall, sysctl, WireGuard tunnel)
   hosts: all
   become: true
   gather_facts: true
   roles:
     - common
-    - xray
+    - wireguard
 
-- name: Configure VPS1 (entry, home)
+- name: Configure VPS1 (entry, home) — Xray VLESS+Reality
   hosts: entry
   become: true
   gather_facts: false
   roles:
+    - xray
     - xray_entry
-
-- name: Configure VPS2 (exit, foreign)
-  hosts: exit
-  become: true
-  gather_facts: false
-  roles:
-    - xray_exit
 
 - name: Print verification hints
   hosts: localhost
@@ -78,13 +80,18 @@
           - ""
           - "SERVICE HEALTH:"
           - ""
-          - "  make status     # systemctl status xray on both"
-          - "  make logs       # journalctl -u xray -n 50"
+          - "  make status     # systemctl status xray + wg-quick@wg0"
+          - "  make logs       # journalctl -u xray -n 50 (entry only)"
+          - "  make wg-show    # wg show on both — handshake must be < 3 min ago"
           - ""
           - "DEBUG TIPS:"
           - ""
-          - "  • Reality needs accurate clock — check chrony:"
+          - "  • Reality (client↔VPS1) needs accurate clock — check chrony:"
           - "      ansible -i ansible/inventory.yml all -b -a 'chronyc tracking'"
+          - "  • If WG handshake never completes — check UDP/{{ hostvars[groups['entry'][0]].wg_listen_port | default(51820) }} is open both ways."
+          - "  • If non-RU traffic egresses via VPS1 (wrong IP), the fwmark rule didn't install:"
+          - "      ssh root@\\$IP_VPS1 'ip rule | grep fwmark'"
+          - "      ssh root@\\$IP_VPS1 'ip route show table 100'"
           - "  • If RU routing is broken, verify geodata is present on VPS1:"
           - "      ansible -i ansible/inventory.yml entry -b -a 'ls -la /usr/local/share/xray/'"
           - "═══════════════════════════════════════════════════════════════"

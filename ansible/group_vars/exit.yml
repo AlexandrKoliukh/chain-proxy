@@ -1,11 +1,16 @@
 ---
 # ╔════════════════════════════════════════════════════════════════╗
 # ║ VPS2 (foreign server, exit).                                   ║
+# ║ Now a thin WireGuard NAT gateway — Xray is no longer deployed  ║
+# ║ here. Receives traffic from VPS1 over wg0 and MASQUERADEs it.  ║
 # ║ Values are read from environment variables (see .env).         ║
-# ║ Populate them with `make gen-keys` — no manual editing needed. ║
 # ╚════════════════════════════════════════════════════════════════╝
 
-exit_listen_port: 443
-link_uuid:         "{{ lookup('env', 'LINK_UUID') }}"
-link_short_id:     "{{ lookup('env', 'LINK_SHORT_ID') }}"
-exit_private_key:  "{{ lookup('env', 'LINK_PRIVATE_KEY') }}"
+wg_private_key:     "{{ lookup('env', 'WG_VPS2_PRIVATE') }}"
+wg_peer_public_key: "{{ lookup('env', 'WG_VPS1_PUBLIC') }}"
+
+# 443 больше не нужен — клиенты подключаются только к VPS1.
+firewall_allowed_tcp_ports:
+  - 22
+firewall_allowed_udp_ports:
+  - "{{ wg_listen_port }}"

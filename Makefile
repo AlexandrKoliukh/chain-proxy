@@ -15,12 +15,14 @@ WITH_KEY     := SSH_KEY=$(SSH_KEY) bash $(ANSIBLE_DIR)/scripts/with-ssh-key.sh
 export IP_VPS1 IP_VPS2
 export ENTRY_CLIENT_UUID ENTRY_FRIENDS_UUID ENTRY_PRIVATE_KEY ENTRY_PUBLIC_KEY ENTRY_SHORT_ID
 export LINK_UUID LINK_PUBLIC_KEY LINK_PRIVATE_KEY LINK_SHORT_ID
+export WG_VPS1_PRIVATE WG_VPS1_PUBLIC WG_VPS2_PRIVATE WG_VPS2_PUBLIC
 export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 
 .DEFAULT_GOAL := help
 
 .PHONY: help install gen-keys ping syntax lint check deploy deploy-entry deploy-exit \
-        restart reload reset status logs xray-test tail-entry tail-exit facts clean
+        restart reload reset status logs xray-test wg-show wg-restart \
+        tail-entry tail-exit facts clean
 
 ## ── Help ──────────────────────────────────────────────────────────
 help:  ## Show this help
@@ -68,29 +70,38 @@ deploy-exit:  ## Deploy only VPS2 (exit, foreign)
 	$(WITH_KEY) ansible-playbook -i $(INVENTORY) $(PLAYBOOK) --limit exit
 
 ## ── Operations ────────────────────────────────────────────────────
-restart:  ## systemctl restart xray on both
-	$(WITH_KEY) ansible -i $(INVENTORY) all -b -m systemd -a 'name=xray state=restarted daemon_reload=yes'
+restart:  ## systemctl restart xray on VPS1 + wg-quick@wg0 on both
+	$(WITH_KEY) ansible -i $(INVENTORY) entry -b -m systemd -a 'name=xray state=restarted daemon_reload=yes'
+	$(WITH_KEY) ansible -i $(INVENTORY) all   -b -m systemd -a 'name=wg-quick@wg0 state=restarted daemon_reload=yes'
 
-reload:  ## systemctl reload xray on both
-	$(WITH_KEY) ansible -i $(INVENTORY) all -b -m systemd -a 'name=xray state=reloaded'
+reload:  ## systemctl reload xray on VPS1
+	$(WITH_KEY) ansible -i $(INVENTORY) entry -b -m systemd -a 'name=xray state=reloaded'
 
-reset:  ## reset-failed + start xray (unblock systemd rate-limit after crashes)
-	$(WITH_KEY) ansible -i $(INVENTORY) all -b -a 'bash -lc "systemctl reset-failed xray && systemctl start xray"'
+reset:  ## reset-failed + start xray on VPS1 (unblock systemd rate-limit)
+	$(WITH_KEY) ansible -i $(INVENTORY) entry -b -a 'bash -lc "systemctl reset-failed xray && systemctl start xray"'
 
-status:  ## systemctl status xray on both
-	$(WITH_KEY) ansible -i $(INVENTORY) all -b -a 'systemctl --no-pager status xray'
+status:  ## systemctl status xray (VPS1) + wg-quick@wg0 (both)
+	$(WITH_KEY) ansible -i $(INVENTORY) entry -b -a 'systemctl --no-pager status xray'
+	$(WITH_KEY) ansible -i $(INVENTORY) all   -b -a 'systemctl --no-pager status wg-quick@wg0'
 
-logs:  ## Last 50 journal lines per host
-	$(WITH_KEY) ansible -i $(INVENTORY) all -b -a 'journalctl -u xray -n 50 --no-pager'
+logs:  ## Last 50 journal lines (xray on VPS1, wg-quick on both)
+	$(WITH_KEY) ansible -i $(INVENTORY) entry -b -a 'journalctl -u xray -n 50 --no-pager'
+	$(WITH_KEY) ansible -i $(INVENTORY) all   -b -a 'journalctl -u wg-quick@wg0 -n 30 --no-pager'
 
-xray-test:  ## xray -test -config on both
-	$(WITH_KEY) ansible -i $(INVENTORY) all -b -a '/usr/local/bin/xray -test -config /usr/local/etc/xray/config.json'
+xray-test:  ## xray -test -config on VPS1
+	$(WITH_KEY) ansible -i $(INVENTORY) entry -b -a '/usr/local/bin/xray -test -config /usr/local/etc/xray/config.json'
+
+wg-show:  ## wg show on both (peer + handshake age)
+	$(WITH_KEY) ansible -i $(INVENTORY) all -b -a 'wg show'
+
+wg-restart:  ## Restart wg-quick@wg0 on both
+	$(WITH_KEY) ansible -i $(INVENTORY) all -b -m systemd -a 'name=wg-quick@wg0 state=restarted daemon_reload=yes'
 
 tail-entry:  ## Tail xray logs on VPS1
 	$(WITH_KEY) ansible -i $(INVENTORY) entry -b -a 'journalctl -u xray -f --no-pager' || true
 
-tail-exit:  ## Tail xray logs on VPS2
-	$(WITH_KEY) ansible -i $(INVENTORY) exit -b -a 'journalctl -u xray -f --no-pager' || true
+tail-exit:  ## Tail wg-quick logs on VPS2 (Xray no longer runs there)
+	$(WITH_KEY) ansible -i $(INVENTORY) exit -b -a 'journalctl -u wg-quick@wg0 -f --no-pager' || true
 
 facts:  ## Gather ansible facts (diagnostics)
 	$(WITH_KEY) ansible -i $(INVENTORY) all -m setup
