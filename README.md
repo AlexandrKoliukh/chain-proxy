@@ -1,5 +1,9 @@
 # chain-proxy — личный VPN-туннель на двух серверах
 
+[![tests](https://github.com/AlexandrKoliukh/chain-proxy/actions/workflows/tests.yml/badge.svg)](https://github.com/AlexandrKoliukh/chain-proxy/actions/workflows/tests.yml)
+
+> 📖 См. также: [Часто задаваемые вопросы](docs/FAQ.md) · [Сценарии использования](docs/USE-CASES.md)
+
 Этот репозиторий автоматически настраивает **два арендованных сервера** так, чтобы у вас был свой личный VPN-канал с важным свойством:
 
 - Русскоязычные сайты (Яндекс, VK, Mail, Сбер и т. п.) **открываются с IP домашнего сервера** — не банят вас за «вход из-за границы».
