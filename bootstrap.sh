@@ -43,6 +43,9 @@ apt-get install -y --no-install-recommends \
 
 systemctl enable --now docker >/dev/null
 
+log "установка Ansible-коллекций (community.general, ansible.posix)"
+ansible-galaxy collection install community.general ansible.posix --upgrade -p /usr/share/ansible/collections
+
 log "git clone $REPO_URL → $INSTALL_DIR (branch $REPO_BRANCH)"
 if [ -d "$INSTALL_DIR/.git" ]; then
   git -C "$INSTALL_DIR" fetch --quiet origin "$REPO_BRANCH"

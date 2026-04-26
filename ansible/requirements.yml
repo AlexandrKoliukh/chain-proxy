@@ -1,0 +1,4 @@
+---
+collections:
+  - name: community.general   # ufw, and other community modules
+  - name: ansible.posix        # sysctl, firewalld, etc.
