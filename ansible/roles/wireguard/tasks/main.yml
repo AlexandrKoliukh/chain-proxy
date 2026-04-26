@@ -27,6 +27,7 @@
       - wireguard
       - wireguard-tools
     state: present
+    install_recommends: false
 
 - name: Ensure /etc/wireguard exists with strict perms
   file:

@@ -11,6 +11,7 @@ COPY ui/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 WORKDIR /opt/chain-proxy
+COPY ui/ /opt/chain-proxy/ui/
 ENV PYTHONUNBUFFERED=1 \
     CHAIN_PROXY_ROOT=/opt/chain-proxy \
     CHAIN_PROXY_DATA=/opt/chain-proxy/data \

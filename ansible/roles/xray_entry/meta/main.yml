@@ -1,3 +1,14 @@
 ---
+galaxy_info:
+  role_name: xray_entry
+  namespace: chain_proxy
+  author: chain_proxy
+  description: Renders Xray entry-node config (VLESS+Reality inbound, WG fwmark outbound)
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - "24"
+
 dependencies:
   - role: xray

@@ -3,15 +3,10 @@ dependency:
   name: galaxy
   enabled: false
 driver:
-  name: default
-  options:
-    managed: true
-    login_cmd_template: "docker exec -ti {instance} bash"
-    ansible_connection_options:
-      ansible_connection: docker
+  name: docker
 platforms:
   - name: cp-xray-entry
-    image: geerlingguy/docker-debian12-ansible:latest
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
     pre_build_image: true
     privileged: true
     cgroupns_mode: host
@@ -27,7 +22,6 @@ provisioner:
   name: ansible
   config_options:
     defaults:
-      stdout_callback: yaml
       roles_path: ../../../
 verifier:
   name: ansible

@@ -26,9 +26,12 @@ export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
         ui-up ui-stop ui-logs ui-rebuild ui-shell \
         test-install test test-unit test-api test-docker test-molecule test-all
 
-VENV_TESTS := .venv-tests
-PYTEST     := $(VENV_TESTS)/bin/pytest
-TEST_PIP   := $(VENV_TESTS)/bin/pip
+VENV_TESTS    := .venv-tests
+PYTEST        := $(VENV_TESTS)/bin/pytest
+TEST_PIP      := $(VENV_TESTS)/bin/pip
+
+VENV_MOLECULE := .venv-molecule
+MOLECULE      := $(VENV_MOLECULE)/bin/molecule
 
 ## ── Help ──────────────────────────────────────────────────────────
 help:  ## Show this help
@@ -137,6 +140,17 @@ test-install:  ## Создать .venv-tests и поставить зависи�
 	$(TEST_PIP) install -q --upgrade pip
 	$(TEST_PIP) install -q -r tests/requirements.txt
 
+test-install-molecule:  ## Создать .venv-molecule и поставить molecule + ansible-core
+	python3 -m venv $(VENV_MOLECULE)
+	$(VENV_MOLECULE)/bin/pip install -q --upgrade pip
+	$(VENV_MOLECULE)/bin/pip install -q \
+	    "ansible-core==2.16.*" \
+	    "molecule==24.*" \
+	    "molecule-plugins[docker]==23.*" \
+	    "docker==7.*"
+	$(VENV_MOLECULE)/bin/ansible-galaxy collection install \
+	    community.general ansible.posix community.docker
+
 test-unit:  ## pytest tests/unit (юнит-тесты UI-кода)
 	cd tests && ../$(PYTEST) unit -v
 
@@ -149,10 +163,10 @@ test:  ## pytest tests/unit + tests/api (быстрые, без сети и dock
 test-docker:  ## Smoke-тест собранного docker-образа UI (требует docker)
 	CHAIN_PROXY_TEST_DOCKER=1 cd tests && ../$(PYTEST) api/test_docker_image.py -v
 
-test-molecule:  ## molecule test для всех ролей (требует docker и Linux)
+test-molecule:  ## molecule test для всех ролей (требует docker; запусти test-install-molecule первым)
 	@for role in common xray xray_entry wireguard; do \
 	    echo ">>> molecule test $$role"; \
-	    (cd ansible/roles/$$role && molecule test) || exit 1; \
+	    (cd ansible/roles/$$role && ../../../$(MOLECULE) test) || exit 1; \
 	done
 
 test-all:  ## test + test-docker + test-molecule (полный прогон)

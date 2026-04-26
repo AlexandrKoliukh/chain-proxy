@@ -12,14 +12,21 @@
     group: root
     mode: "0755"
 
-- name: Ensure Xray log directory exists with writable ownership
+# Match what XTLS install-release.sh enforces on every run (see install_xray()
+# in https://github.com/XTLS/Xray-install — `chown 0:0` + `chmod 755` are
+# inside the `else` branch that runs whenever /var/log/xray/ already exists).
+# Setting nobody:nogroup 0775 here would flip-flop on every play: our task
+# changes it, install-release.sh resets it back, idempotence test fails.
+# chain-proxy does not write log files anyway — Xray logs go to stdout/stderr
+# → journald (see CLAUDE.md). The directory is here only because XTLS creates
+# it; we just need the perms to match so we stop fighting the installer.
+- name: Ensure Xray log directory exists (matches XTLS install-release.sh)
   file:
     path: "{{ xray_log_dir }}"
     state: directory
-    owner: nobody
-    group: nogroup
-    mode: "0775"
-    recurse: true
+    owner: root
+    group: root
+    mode: "0755"
 
 - name: Stat existing Xray binary
   stat:
@@ -42,51 +49,86 @@
   register: xray_version_out
   changed_when: false
 
+# `install-geodata` always re-downloads geoip.dat AND geosite.dat from XTLS,
+# overwriting whatever is on disk. Without `creates:` it would re-download on
+# every play, clobber our roscomvpn geoip.dat, and trigger the entire roscomvpn
+# block + xray restart handler again — breaking idempotence. (The XTLS script
+# also doesn't print the "installation of geodata is complete" string we look
+# for below, so changed_when never matches and the task masquerades as `ok`
+# while still mutating files.) Weekly cron `xray-update-geodata.sh` is the
+# proper path for refreshing geosite.dat.
 - name: Install / update geodata (geoip.dat + geosite.dat)
   shell: |
     curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh \
       | bash -s -- install-geodata
   args:
     executable: /bin/bash
+    creates: "{{ xray_assets_dir }}/geosite.dat"
   register: geodata_install
   changed_when: "'installation of geodata is complete' in (geodata_install.stdout | lower)"
 
 - name: Overwrite geoip.dat with hydraponique/roscomvpn-geoip release
   when: roscomvpn_geoip_enabled
   block:
-    - name: Download roscomvpn geoip.dat
+    # Keep the sidecar at a stable path — it serves as the "expected sha256" marker.
+    # force: false means we skip the download when it already exists, making the
+    # whole block idempotent. The weekly cron script fetches a fresh copy into a
+    # tmpdir independently, so the stale sidecar on disk doesn't affect updates.
+    - name: Download roscomvpn geoip.dat sha256 sidecar
+      get_url:
+        url: "{{ roscomvpn_geoip_sha256_url }}"
+        dest: "{{ xray_assets_dir }}/geoip.dat.sha256"
+        mode: "0644"
+        force: false
+        timeout: 30
+      register: roscomvpn_sha256_dl
+      until: roscomvpn_sha256_dl is succeeded
+      retries: 5
+      delay: 6
+
+    - name: Read expected sha256 from sidecar
+      command: awk '{print $1}' "{{ xray_assets_dir }}/geoip.dat.sha256"
+      register: roscomvpn_expected_sha256
+      changed_when: false
+
+    - name: Stat current geoip.dat
+      stat:
+        path: "{{ xray_assets_dir }}/geoip.dat"
+        checksum_algorithm: sha256
+      register: roscomvpn_current_stat
+
+    # GitHub release CDN occasionally returns 502/503 (especially under CI load).
+    # Retry up to 5 times with 6s delay so transient gateway errors don't abort
+    # the play — the same retry pattern is applied to the sidecar download above.
+    - name: Download roscomvpn geoip.dat (only when sha256 differs)
       get_url:
         url: "{{ roscomvpn_geoip_url }}"
         dest: "{{ xray_assets_dir }}/geoip.dat.new"
         mode: "0644"
         force: true
-
-    - name: Download roscomvpn geoip.dat sha256 sidecar
-      get_url:
-        url: "{{ roscomvpn_geoip_sha256_url }}"
-        dest: "{{ xray_assets_dir }}/geoip.dat.new.sha256"
-        mode: "0644"
-        force: true
+        timeout: 60
+      when: >-
+        not roscomvpn_current_stat.stat.exists or
+        roscomvpn_current_stat.stat.checksum != roscomvpn_expected_sha256.stdout
+      register: roscomvpn_download
+      until: roscomvpn_download is succeeded
+      retries: 5
+      delay: 6
 
     - name: Verify roscomvpn geoip.dat checksum
       shell: |
         set -euo pipefail
-        cd "{{ xray_assets_dir }}"
-        expected=$(awk '{print $1}' geoip.dat.new.sha256)
-        actual=$(sha256sum geoip.dat.new | awk '{print $1}')
-        [ "$expected" = "$actual" ]
+        actual=$(sha256sum "{{ xray_assets_dir }}/geoip.dat.new" | awk '{print $1}')
+        [ "{{ roscomvpn_expected_sha256.stdout }}" = "$actual" ]
       args:
         executable: /bin/bash
       changed_when: false
+      when: roscomvpn_download is changed
 
     - name: Activate roscomvpn geoip.dat
       command: mv "{{ xray_assets_dir }}/geoip.dat.new" "{{ xray_assets_dir }}/geoip.dat"
       notify: restart xray
-
-    - name: Cleanup sha256 sidecar
-      file:
-        path: "{{ xray_assets_dir }}/geoip.dat.new.sha256"
-        state: absent
+      when: roscomvpn_download is changed
 
 - name: Drop weekly geodata updater script
   copy:
@@ -116,6 +158,20 @@
       {% endif %}
       systemctl reload-or-restart {{ xray_service_name }}
 
+- name: Ensure cron package is installed (required by ansible.builtin.cron)
+  apt:
+    name: cron
+    state: present
+    update_cache: false
+  when: geodata_update_enabled
+
+- name: Ensure cron service is running
+  service:
+    name: cron
+    state: started
+    enabled: true
+  when: geodata_update_enabled
+
 - name: Schedule weekly geodata update
   cron:
     name: "xray geodata weekly refresh"
@@ -130,4 +186,3 @@
   systemd:
     name: "{{ xray_service_name }}"
     enabled: true
-    daemon_reload: true

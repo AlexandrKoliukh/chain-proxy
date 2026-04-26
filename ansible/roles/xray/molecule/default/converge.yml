@@ -11,6 +11,7 @@
           - curl
           - ca-certificates
           - unzip
+          - cron
         state: present
         update_cache: true
   roles:

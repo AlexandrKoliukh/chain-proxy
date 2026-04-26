@@ -4,6 +4,17 @@
   become: true
   vars_files:
     - ../../../../group_vars/all.yml
+  pre_tasks:
+    - name: Install prerequisites (curl for xray installer, cron for geodata schedule)
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - unzip
+          - cron
+        state: present
+        update_cache: true
+
   vars:
     # Test fixtures matching the env-var lookup in group_vars/entry.yml.
     # These are dummy keys — Reality private/public must be valid x25519
