@@ -1,7 +1,7 @@
 # chain-proxy — личный VPN split-tunneling на двух серверах
 
 [![tests](https://github.com/AlexandrKoliukh/chain-proxy/actions/workflows/tests.yml/badge.svg)](https://github.com/AlexandrKoliukh/chain-proxy/actions/workflows/tests.yml)
-![как работает chain proxy](docs/img2.png)
+![как работает chain proxy](docs/img2.jpg)
 
 [Часто задаваемые вопросы](docs/FAQ.md)
 > Правила роутинга взял у [hydraponique/roscomvpn-routing](https://github.com/hydraponique/roscomvpn-routing)
