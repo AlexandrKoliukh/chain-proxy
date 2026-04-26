@@ -17,5 +17,10 @@
     owner: root
     group: root
     mode: "0644"
-    validate: "/usr/local/bin/xray -test -config %s"
   notify: restart xray
+
+# validate= passes a temp file with no extension; Xray >=25 infers format
+# from extension and refuses to parse it. Test against the deployed path instead.
+- name: Validate deployed Xray config
+  command: /usr/local/bin/xray -test -config {{ xray_config_dir }}/config.json
+  changed_when: false
