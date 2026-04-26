@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Клиент{% endblock %}
+{% block body %}
+{% if missing %}
+<section class="card">
+  <h2>Подключение клиента</h2>
+  <div class="flash warn">Нет VLESS-link: {{ missing }}.</div>
+</section>
+{% else %}
+{% for c in clients %}
+<section class="card">
+  <h2>{{ c.email }}</h2>
+  <p class="muted">Откройте Amnezia / v2rayN / NekoBox → Add → Import URL/QR.</p>
+  <div class="qr-row">
+    <img class="qr" src="data:image/png;base64,{{ c.qr }}" alt="QR for {{ c.email }}">
+    <textarea class="vless" readonly rows="4" onclick="this.select()">{{ c.uri }}</textarea>
+  </div>
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}

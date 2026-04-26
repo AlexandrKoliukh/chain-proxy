@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Deploy{% endblock %}
+{% block body %}
+<section class="card">
+  <h2>Запуск ansible-playbook</h2>
+  <p>
+    Deploy выполняется через <code>nsenter -t 1 -a -- ansible-playbook</code>.
+    VPS1 трогается локально (<code>connection: local</code>), VPS2 — по SSH с
+    паролем из настроек (<code>sshpass</code>). Logs стримятся ниже по SSE.
+  </p>
+  <form method="post" action="/api/deploy">
+    <label>Цель
+      <select name="limit">
+        <option value="all">Обе (VPS1 + VPS2)</option>
+        <option value="entry">Только VPS1 (entry)</option>
+        <option value="exit">Только VPS2 (exit)</option>
+      </select>
+    </label>
+    <button type="submit"
+      {% if job_status.state == 'running' %}disabled{% endif %}>
+      {% if job_status.state == 'running' %}
+        Уже выполняется ({{ job_status.kind }})
+      {% else %}
+        Запустить deploy
+      {% endif %}
+    </button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Лог</h2>
+  <div class="log" id="log"></div>
+  <p class="muted" id="log-state">Подключение к стриму…</p>
+</section>
+
+<script>
+  const log = document.getElementById('log');
+  const state = document.getElementById('log-state');
+  const ev = new EventSource('/api/deploy/stream');
+  ev.onmessage = (e) => {
+    log.textContent += e.data + '\n';
+    log.scrollTop = log.scrollHeight;
+  };
+  ev.addEventListener('done', (e) => {
+    state.textContent = 'Готово, exit ' + e.data;
+    ev.close();
+  });
+  ev.onerror = () => { state.textContent = 'Стрим разорван.'; };
+</script>
+{% endblock %}

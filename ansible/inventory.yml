@@ -1,7 +1,8 @@
 ---
 # ┌─────────────────────────────────────────────────────────────────┐
-# │ Fill in the public IPs (or hostnames) into .env                 │
-# │ Both must already have Ubuntu 24.04 and root SSH access.        │
+# │ Fill in the public IPs (or hostnames) into .env (CLI flow)      │
+# │ or via the web UI form (UI flow).                               │
+# │ Both VPS must already have Ubuntu 24.04 / Debian 12 with root.  │
 # └─────────────────────────────────────────────────────────────────┘
 all:
   children:
@@ -9,11 +10,25 @@ all:
       hosts:
         vps1:
           ansible_host: "{{ lookup('env', 'IP_VPS1') }}"
+          # When the UI runs ansible from the on-host container via nsenter,
+          # VPS1 is "ourselves": skip SSH and execute locally.
+          ansible_connection: "{{ 'local' if (lookup('env', 'CHAIN_PROXY_LOCAL_ENTRY') | default('', true)) else 'smart' }}"
     exit:
       hosts:
         vps2:
           ansible_host: "{{ lookup('env', 'IP_VPS2') }}"
+          ansible_user: "{{ lookup('env', 'VPS2_USER') | default('root', true) }}"
+          ansible_port: "{{ lookup('env', 'VPS2_PORT') | default('22', true) | int }}"
+          # Password auth is used when the UI flow drives the deploy (sshpass).
+          # CLI flow (laptop) leaves VPS2_PASSWORD empty and relies on ssh-agent.
+          ansible_password: "{{ lookup('env', 'VPS2_PASSWORD') | default(omit, true) }}"
+          ansible_ssh_pass: "{{ lookup('env', 'VPS2_PASSWORD') | default(omit, true) }}"
+          ansible_become_password: "{{ lookup('env', 'VPS2_PASSWORD') | default(omit, true) }}"
   vars:
     ansible_user: root
     ansible_port: 22
-    ansible_ssh_common_args: '-o StrictHostKeyChecking=accept-new'
+    # known_hosts is persisted under data/ so it survives container rebuilds.
+    ansible_ssh_common_args: >-
+      -o StrictHostKeyChecking=accept-new
+      -o UserKnownHostsFile={{ lookup('env', 'CHAIN_PROXY_KNOWN_HOSTS')
+        | default('~/.ssh/known_hosts', true) }}

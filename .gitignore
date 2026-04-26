@@ -6,3 +6,5 @@ ansible/*.retry
 .env
 /.idea/
 .claude
+__pycache__/
+*.pyc

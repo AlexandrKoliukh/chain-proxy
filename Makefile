@@ -22,7 +22,8 @@ export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 
 .PHONY: help install gen-keys ping syntax lint check deploy deploy-entry deploy-exit \
         restart reload reset status logs xray-test wg-show wg-restart \
-        tail-entry tail-exit facts clean
+        tail-entry tail-exit facts clean \
+        ui-up ui-stop ui-logs ui-rebuild ui-shell
 
 ## ── Help ──────────────────────────────────────────────────────────
 help:  ## Show this help
@@ -108,3 +109,19 @@ facts:  ## Gather ansible facts (diagnostics)
 
 clean:  ## Remove cached facts
 	rm -rf $(ANSIBLE_DIR)/.facts
+
+## ── UI (web-панель на VPS1) ──────────────────────────────────────
+ui-up:  ## Поднять UI-контейнер на VPS1 (docker compose up -d --build)
+	docker compose up -d --build
+
+ui-stop:  ## Остановить UI-контейнер
+	docker compose down
+
+ui-logs:  ## Хвост логов UI-контейнера
+	docker compose logs -f ui
+
+ui-rebuild:  ## Пересобрать образ и перезапустить контейнер
+	docker compose up -d --build --force-recreate
+
+ui-shell:  ## Зайти в UI-контейнер (диагностика)
+	docker compose exec ui bash

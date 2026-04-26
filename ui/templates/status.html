@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Статус{% endblock %}
+{% block body %}
+{% for host in [status.vps1, status.vps2] %}
+<section class="card">
+  <h2>
+    {{ host.label }}
+    <span class="badge {{ 'ok' if host.ok else 'err' }}">
+      {{ 'OK' if host.ok else 'PROBLEM' }}
+    </span>
+  </h2>
+  <dl class="kv">
+    {% for item in host.items %}
+    <dt>{{ item.name }}</dt>
+    <dd><code>{{ item.value }}</code></dd>
+    {% endfor %}
+  </dl>
+</section>
+{% endfor %}
+<p class="muted">Обновите страницу, чтобы перезапросить состояние.</p>
+{% endblock %}

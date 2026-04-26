@@ -1,0 +1,15 @@
+services:
+  ui:
+    build: .
+    image: chain-proxy-ui:local
+    container_name: chain-proxy-ui
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    privileged: true
+    volumes:
+      - /opt/chain-proxy:/opt/chain-proxy
+    environment:
+      CHAIN_PROXY_ROOT: /opt/chain-proxy
+      CHAIN_PROXY_DATA: /opt/chain-proxy/data
+      CHAIN_PROXY_PORT: 8443

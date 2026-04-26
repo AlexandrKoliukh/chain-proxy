@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Настройки{% endblock %}
+{% block body %}
+{% if has_initial %}
+<div class="flash warn">
+  В <code>data/initial-password.txt</code> ещё лежит первичный пароль.
+  Смените его ниже и удалите файл вручную с хоста после успешного входа.
+</div>
+{% endif %}
+
+<section class="card">
+  <h2>Хосты и доступ</h2>
+  <form method="post" action="/settings">
+    <label>IP VPS1 (entry, домашний)
+      <input name="vps1_ip" value="{{ cfg.hosts.vps1_ip }}" required>
+    </label>
+    <label>IP VPS2 (exit, зарубежный)
+      <input name="vps2_ip" value="{{ cfg.hosts.vps2_ip }}" required>
+    </label>
+    <div class="row">
+      <label>VPS2 user
+        <input name="vps2_user" value="{{ cfg.hosts.vps2_user }}">
+      </label>
+      <label>VPS2 port
+        <input name="vps2_port" type="number" value="{{ cfg.hosts.vps2_port }}">
+      </label>
+    </div>
+    <label>VPS2 пароль (для sshpass)
+      <input name="vps2_password" type="password" value=""
+        placeholder="{% if cfg.hosts.vps2_password %}<сохранён>{% else %}пусто{% endif %}">
+      <small>Пустое поле = не менять. Введите новый пароль для перезаписи.</small>
+    </label>
+
+    <h3>Reality SNI</h3>
+    <div class="row">
+      <label>dest_host
+        <input name="reality_dest_host" value="{{ cfg.reality.dest_host }}">
+      </label>
+      <label>fingerprint
+        <input name="reality_fingerprint" value="{{ cfg.reality.fingerprint }}">
+      </label>
+    </div>
+
+    <button type="submit">Сохранить</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Ключи</h2>
+  <p>
+    UUID, x25519 и WireGuard ключи генерируются скриптом
+    <code>ansible/scripts/gen-keys.sh</code>. Перегенерация инвалидирует и
+    клиентский VLESS-link, и WG-handshake — после неё нужен повторный deploy.
+  </p>
+  <form method="post" action="/api/gen-keys">
+    <button type="submit"
+      onclick="return confirm('Сгенерировать новые ключи? Старые перестанут работать.')">
+      Сгенерировать ключи
+    </button>
+  </form>
+  {% if cfg.keys.entry_public_key %}
+  <details>
+    <summary>Текущий блок ключей (только публичные части)</summary>
+    <dl class="kv">
+      <dt>ENTRY_PUBLIC_KEY</dt><dd><code>{{ cfg.keys.entry_public_key }}</code></dd>
+      <dt>ENTRY_SHORT_ID</dt><dd><code>{{ cfg.keys.entry_short_id }}</code></dd>
+      <dt>ENTRY_CLIENT_UUID</dt><dd><code>{{ cfg.keys.entry_client_uuid }}</code></dd>
+      <dt>ENTRY_FRIENDS_UUID</dt><dd><code>{{ cfg.keys.entry_friends_uuid }}</code></dd>
+      <dt>WG_VPS1_PUBLIC</dt><dd><code>{{ cfg.keys.wg_vps1_public }}</code></dd>
+      <dt>WG_VPS2_PUBLIC</dt><dd><code>{{ cfg.keys.wg_vps2_public }}</code></dd>
+    </dl>
+  </details>
+  {% else %}
+  <p class="muted">Ключи ещё не сгенерированы.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Сменить пароль UI</h2>
+  <form method="post" action="/settings/password">
+    <label>Новый пароль (≥8 символов)
+      <input name="new_password" type="password" minlength="8" required>
+    </label>
+    <button type="submit">Сменить</button>
+  </form>
+</section>
+{% endblock %}
