@@ -77,6 +77,127 @@ These all looked like minor stylistic choices but each is load-bearing — flipp
 - **VPS2 PostUp uses `iptables -I FORWARD 1` (insert at top), not `-A FORWARD` (append)**. When Docker is installed on VPS2 — which is common, since `make gen-keys` may pull docker for x25519 fallback — Docker prepends `DOCKER-USER` and `DOCKER-FORWARD` chains and silently drops non-Docker forwarded traffic. Appended rules never match. Insert-at-top guarantees our ACCEPT fires first regardless of Docker.
 - **`ip route get <some-public-ip> mark 0xff` on VPS1** must show `dev wg0 src 10.66.0.1`. If it shows the main interface, fwmark policy routing is broken — usually the rule got removed or the table is empty. `make wg-restart` reapplies PostUp.
 
+## Tests
+
+### Structure
+
+```
+tests/
+├── conftest.py          # shared fixtures (see below)
+├── requirements.txt     # pytest, httpx, pytest-asyncio, pytest-mock, …
+├── pytest.ini           # asyncio_mode=auto; markers: unit, api, docker_image
+├── unit/                # pure Python tests of ui/* modules (no network, no subprocess)
+│   ├── test_auth.py
+│   ├── test_config.py
+│   ├── test_vless.py
+│   ├── test_status_parse.py
+│   └── test_tls.py
+└── api/                 # FastAPI endpoint tests via httpx ASGITransport
+    ├── test_healthz.py
+    ├── test_auth_flow.py
+    ├── test_settings.py
+    ├── test_gen_keys.py
+    ├── test_deploy.py
+    ├── test_status.py
+    ├── test_client_link.py
+    └── test_docker_image.py  # gate: CHAIN_PROXY_TEST_DOCKER=1
+```
+
+Molecule scenarios for each Ansible role live in `ansible/roles/<role>/molecule/default/`.
+
+### Commands
+
+```bash
+make test-install   # create .venv-tests and pip install tests/requirements.txt
+make test           # pytest tests/unit + tests/api  (fast; no network, no docker)
+make test-unit      # only unit tests
+make test-api       # only API tests
+make test-docker    # docker build smoke test (requires docker)
+make test-molecule  # molecule test for all 4 roles  (requires docker + Linux)
+make test-all       # test + test-docker + test-molecule
+```
+
+All tests run in isolation — each test gets its own `tmp_path` as `CHAIN_PROXY_DATA`; subprocess calls (Ansible, gen-keys.sh) are mocked.
+
+### Isolation contract (always enforce)
+
+- **Never write to `/opt/chain-proxy` or `~/.config` in tests.** `CHAIN_PROXY_DATA` is always a fresh `tmp_path`.
+- **Never run real subprocesses** (`ansible-playbook`, `gen-keys.sh`, `systemctl`, `wg`, `ssh`) in unit/api tests. Mock at the `ui.runner.run_capture` / `ui.keys.regenerate` / `ui.status.collect` / `ui.deploy.start_deploy` boundary.
+- **Set `CHAIN_PROXY_NSENTER=0`** (already done in `conftest.py`) so no test tries to call `nsenter`.
+- **Reload `ui.*` modules** after setting env vars — module-level `Path` constants bake in values at import time. The `ui_modules` fixture in `conftest.py` handles this via `sys.modules.pop` + `importlib.import_module`.
+
+### How to add a new unit test
+
+1. Create (or add to) `tests/unit/test_<module>.py`.
+2. Decorate the module with `pytestmark = pytest.mark.unit`.
+3. Accept `ui_modules` fixture — access any `ui.*` module via `ui_modules["<module>"]` (e.g. `ui_modules["auth"]`).
+4. No `async` needed for pure Python code.
+
+```python
+import pytest
+pytestmark = pytest.mark.unit
+
+def test_something(ui_modules):
+    auth = ui_modules["auth"]
+    assert auth.verify("admin", "wrong") is False
+```
+
+### How to add a new API test
+
+1. Create (or add to) `tests/api/test_<endpoint>.py`.
+2. Use `pytestmark = pytest.mark.api`.
+3. Accept the `client` fixture (async httpx client) and `initial_password` (sets up basic-auth for `("admin", "testpass123")`).
+4. To mock a subprocess-backed operation, monkeypatch at the module level. Examples:
+   - `monkeypatch.setattr(ui_modules["keys"], "regenerate", fake_fn)`
+   - `monkeypatch.setattr(ui_modules["status"], "collect", fake_fn)`
+   - `monkeypatch.setattr(ui_modules["deploy"], "start_deploy", fake_fn)`
+
+```python
+import pytest
+pytestmark = pytest.mark.api
+BASIC = ("admin", "testpass123")
+
+async def test_my_endpoint(client, initial_password):
+    resp = await client.get("/my-route", auth=BASIC)
+    assert resp.status_code == 200
+```
+
+### How to add a new Molecule test
+
+When you add or change a role task that has a verifiable side-effect (file created, service active, sysctl value, iptables rule), add an assertion in the role's `verify.yml`:
+
+```
+ansible/roles/<role>/molecule/default/verify.yml
+```
+
+Rules:
+- Use `command:` / `shell:` + `failed_when:` for imperative checks (active service, file exists, command exit code).
+- Use `slurp:` + `from_json` + `assert:` for checking rendered JSON configs (e.g. `xray_entry` config.json).
+- Keep `changed_when: false` on all verify tasks.
+- If the new role/task needs vars that come from `.env`, supply dummy values in `converge.yml` `vars:` block — never use real keys.
+
+If you add a **new role**, copy the molecule scaffold from an existing role, adjust the platform count (1 or 2 containers), and add it to:
+- `make test-molecule` loop in Makefile
+- `matrix.role` list in `.github/workflows/tests.yml`
+
+### CI (GitHub Actions)
+
+`.github/workflows/tests.yml` runs on every push/PR to `main`:
+
+| Job | What it tests | Gate |
+|-----|---------------|------|
+| `unit-api` | All pytest tests (unit + api) | always |
+| `docker-image` | `docker build` + `/healthz` responds + logs show initial password | always |
+| `molecule (common)` | Baseline packages, sysctl, chrony, UFW ports | always |
+| `molecule (xray)` | xray binary, geoip.dat sha256, cron script | always |
+| `molecule (xray_entry)` | `xray -test -config`, JSON routing/fwmark invariants | always |
+| `molecule (wireguard)` | WG handshake between two containers, fwmark routing on entry, iptables on exit | always; requires `sudo modprobe wireguard` |
+
+When a molecule job fails, check:
+1. Did `converge.yml` error? → usually a missing var or package unavailable in the container.
+2. Did `verify.yml` fail an `assert:`? → the role task produced wrong output; fix the task or template.
+3. For `wireguard`: if handshake never happens, the kernel WG module may not be loaded — check the "Load wireguard kernel module" step in the GH Actions log.
+
 ## Editing rules specific to this repo
 
 - If you change `.tsp`/code in some other project's instructions — ignore, this repo has neither TypeSpec nor a frontend. The global `~/CLAUDE.md` describes a different project (RuFlo); do not apply its build/test commands here.

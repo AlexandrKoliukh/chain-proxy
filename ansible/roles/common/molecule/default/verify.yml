@@ -1,0 +1,51 @@
+---
+- name: Verify common role
+  hosts: all
+  become: true
+  tasks:
+    - name: Baseline packages installed
+      command: dpkg-query -W -f='${Status}' {{ item }}
+      register: pkg
+      changed_when: false
+      failed_when: "'install ok installed' not in pkg.stdout"
+      loop:
+        - curl
+        - ca-certificates
+        - jq
+        - ufw
+        - chrony
+        - openssl
+
+    - name: Sysctl tuning file dropped
+      stat:
+        path: /etc/sysctl.d/99-chain-proxy.conf
+      register: sysctl_file
+
+    - name: Sysctl file exists and contains bbr + ip_forward
+      assert:
+        that:
+          - sysctl_file.stat.exists
+          - "'tcp_congestion_control = bbr' in lookup('file', '/etc/sysctl.d/99-chain-proxy.conf')"
+          - "'net.core.default_qdisc = fq' in lookup('file', '/etc/sysctl.d/99-chain-proxy.conf')"
+          - "'net.ipv4.ip_forward = 1' in lookup('file', '/etc/sysctl.d/99-chain-proxy.conf')"
+
+    - name: Chrony enabled
+      command: systemctl is-enabled chrony
+      register: chrony_enabled
+      changed_when: false
+      failed_when: "'enabled' not in chrony_enabled.stdout"
+
+    - name: UFW configured to allow expected TCP ports
+      command: ufw status verbose
+      register: ufw_status
+      changed_when: false
+      failed_when: false
+
+    - name: UFW status contains required ports
+      assert:
+        that:
+          - "'443/tcp' in ufw_status.stdout"
+          - "'8443/tcp' in ufw_status.stdout"
+          - "'51820/udp' in ufw_status.stdout"
+        fail_msg: "ufw status missing expected ports — got: {{ ufw_status.stdout }}"
+      when: ufw_status.rc == 0

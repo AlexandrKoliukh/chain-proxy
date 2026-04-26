@@ -1,0 +1,61 @@
+---
+- name: Verify xray role
+  hosts: all
+  become: true
+  vars_files:
+    - ../../../../group_vars/all.yml
+  tasks:
+    - name: Xray binary installed and executable
+      command: /usr/local/bin/xray version
+      register: xray_version
+      changed_when: false
+      failed_when: xray_version.rc != 0
+
+    - name: Xray version output is sane
+      assert:
+        that:
+          - "'Xray' in xray_version.stdout or 'xray' in xray_version.stdout"
+
+    - name: geoip.dat present
+      stat:
+        path: "{{ xray_assets_dir }}/geoip.dat"
+      register: geoip_file
+      failed_when: not geoip_file.stat.exists
+
+    - name: geosite.dat present
+      stat:
+        path: "{{ xray_assets_dir }}/geosite.dat"
+      register: geosite_file
+      failed_when: not geosite_file.stat.exists
+
+    - name: Verify roscomvpn geoip.dat sha256 against the upstream sidecar
+      when: roscomvpn_geoip_enabled
+      block:
+        - name: Fetch upstream sha256 sidecar
+          get_url:
+            url: "{{ roscomvpn_geoip_sha256_url }}"
+            dest: /tmp/geoip.dat.sha256
+            force: true
+            mode: "0644"
+
+        - name: Compare local sha256 with upstream
+          shell: |
+            set -euo pipefail
+            expected=$(awk '{print $1}' /tmp/geoip.dat.sha256)
+            actual=$(sha256sum {{ xray_assets_dir }}/geoip.dat | awk '{print $1}')
+            [ "$expected" = "$actual" ]
+          args:
+            executable: /bin/bash
+          changed_when: false
+
+    - name: Weekly geodata updater script installed
+      stat:
+        path: /usr/local/bin/xray-update-geodata.sh
+      register: updater_script
+      failed_when: not (updater_script.stat.exists and updater_script.stat.executable)
+
+    - name: Xray systemd unit enabled
+      command: systemctl is-enabled xray
+      register: xray_enabled
+      changed_when: false
+      failed_when: "'enabled' not in xray_enabled.stdout"

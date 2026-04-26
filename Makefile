@@ -23,7 +23,12 @@ export ANSIBLE_CONFIG := $(ANSIBLE_DIR)/ansible.cfg
 .PHONY: help install gen-keys ping syntax lint check deploy deploy-entry deploy-exit \
         restart reload reset status logs xray-test wg-show wg-restart \
         tail-entry tail-exit facts clean \
-        ui-up ui-stop ui-logs ui-rebuild ui-shell
+        ui-up ui-stop ui-logs ui-rebuild ui-shell \
+        test-install test test-unit test-api test-docker test-molecule test-all
+
+VENV_TESTS := .venv-tests
+PYTEST     := $(VENV_TESTS)/bin/pytest
+TEST_PIP   := $(VENV_TESTS)/bin/pip
 
 ## ── Help ──────────────────────────────────────────────────────────
 help:  ## Show this help
@@ -125,3 +130,32 @@ ui-rebuild:  ## Пересобрать образ и перезапустить 
 
 ui-shell:  ## Зайти в UI-контейнер (диагностика)
 	docker compose exec ui bash
+
+## ── Tests ────────────────────────────────────────────────────────
+test-install:  ## Создать .venv-tests и поставить зависимости pytest
+	python3 -m venv $(VENV_TESTS)
+	$(TEST_PIP) install -q --upgrade pip
+	$(TEST_PIP) install -q -r tests/requirements.txt
+
+test-unit:  ## pytest tests/unit (юнит-тесты UI-кода)
+	cd tests && ../$(PYTEST) unit -v
+
+test-api:  ## pytest tests/api (API-тесты FastAPI через ASGI)
+	cd tests && ../$(PYTEST) api -v
+
+test:  ## pytest tests/unit + tests/api (быстрые, без сети и docker)
+	cd tests && ../$(PYTEST) unit api -v
+
+test-docker:  ## Smoke-тест собранного docker-образа UI (требует docker)
+	CHAIN_PROXY_TEST_DOCKER=1 cd tests && ../$(PYTEST) api/test_docker_image.py -v
+
+test-molecule:  ## molecule test для всех ролей (требует docker и Linux)
+	@for role in common xray xray_entry wireguard; do \
+	    echo ">>> molecule test $$role"; \
+	    (cd ansible/roles/$$role && molecule test) || exit 1; \
+	done
+
+test-all:  ## test + test-docker + test-molecule (полный прогон)
+	$(MAKE) test
+	$(MAKE) test-docker
+	$(MAKE) test-molecule

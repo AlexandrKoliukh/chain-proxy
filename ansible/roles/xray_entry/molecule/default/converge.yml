@@ -1,0 +1,22 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars_files:
+    - ../../../../group_vars/all.yml
+  vars:
+    # Test fixtures matching the env-var lookup in group_vars/entry.yml.
+    # These are dummy keys — Reality private/public must be valid x25519
+    # but for `xray -test -config` they only have to be 43-char base64.
+    entry_listen_port: 443
+    entry_private_key: "kAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    entry_public_key:  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    entry_short_id:    "0123456789abcdef"
+    entry_clients:
+      - email: admin
+        id: "11111111-1111-1111-1111-111111111111"
+      - email: friends
+        id: "22222222-2222-2222-2222-222222222222"
+    wg_fwmark: 255
+  roles:
+    - role: xray_entry

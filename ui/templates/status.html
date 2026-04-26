@@ -10,7 +10,7 @@
     </span>
   </h2>
   <dl class="kv">
-    {% for item in host.items %}
+    {% for item in host['items'] %}
     <dt>{{ item.name }}</dt>
     <dd><code>{{ item.value }}</code></dd>
     {% endfor %}

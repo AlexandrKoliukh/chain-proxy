@@ -1,0 +1,51 @@
+---
+- name: Verify xray_entry role
+  hosts: all
+  become: true
+  vars_files:
+    - ../../../../group_vars/all.yml
+  tasks:
+    - name: Config file rendered
+      stat:
+        path: "{{ xray_config_dir }}/config.json"
+      register: cfg_stat
+      failed_when: not cfg_stat.stat.exists
+
+    - name: xray -test -config accepts the rendered config
+      command: /usr/local/bin/xray -test -config {{ xray_config_dir }}/config.json
+      register: xray_test
+      changed_when: false
+      failed_when: xray_test.rc != 0
+
+    - name: Slurp config for structural assertions
+      slurp:
+        src: "{{ xray_config_dir }}/config.json"
+      register: cfg_b64
+
+    - name: Parse config JSON
+      set_fact:
+        cfg: "{{ cfg_b64.content | b64decode | from_json }}"
+
+    - name: Reality VLESS inbound on 443 with reality security
+      assert:
+        that:
+          - cfg.inbounds[0].port == 443
+          - cfg.inbounds[0].protocol == "vless"
+          - cfg.inbounds[0].streamSettings.security == "reality"
+
+    - name: chain-proxy outbound carries the WG fwmark
+      assert:
+        that:
+          - (cfg.outbounds | selectattr('tag', 'equalto', 'chain-proxy') | list | first).streamSettings.sockopt.mark == 255
+
+    - name: Routing rules block private IPs and route RU geosites to direct
+      vars:
+        rules: "{{ cfg.routing.rules }}"
+        block_rule: "{{ rules | selectattr('outboundTag', 'equalto', 'block') | list | first }}"
+        ru_rule: "{{ rules | selectattr('outboundTag', 'equalto', 'direct') | selectattr('domain', 'defined') | list | first }}"
+      assert:
+        that:
+          - "'geoip:private' in block_rule.ip"
+          - "'geosite:category-ru' in ru_rule.domain"
+          - "'geosite:yandex' in ru_rule.domain"
+          - "'geosite:vk' in ru_rule.domain"

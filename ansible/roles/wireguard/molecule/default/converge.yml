@@ -1,0 +1,29 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars_files:
+    - ../../../../group_vars/all.yml
+  vars:
+    firewall_enabled: false
+    # Symmetric assignment based on inventory group:
+    wg_private_key: >-
+      {{ wg_vps1_private if inventory_hostname in groups['entry'] else wg_vps2_private }}
+    wg_peer_public_key: >-
+      {{ wg_vps2_public if inventory_hostname in groups['entry'] else wg_vps1_public }}
+    wg_peer_endpoint: >-
+      {{ hostvars['cp-wg-exit'].ansible_default_ipv4.address }}:{{ wg_listen_port }}
+  pre_tasks:
+    - name: Ensure iptables + iproute2 + wireguard-tools available
+      apt:
+        name:
+          - iptables
+          - iproute2
+          - wireguard-tools
+        state: present
+        update_cache: true
+
+    - name: Gather facts on all hosts (needed for ansible_default_ipv4)
+      setup:
+  roles:
+    - role: wireguard

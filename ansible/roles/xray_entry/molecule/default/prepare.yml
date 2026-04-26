@@ -1,0 +1,17 @@
+---
+- name: Prepare host with the xray base role
+  hosts: all
+  become: true
+  vars_files:
+    - ../../../../group_vars/all.yml
+  pre_tasks:
+    - name: Install minimal prerequisites
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - unzip
+        state: present
+        update_cache: true
+  roles:
+    - role: xray

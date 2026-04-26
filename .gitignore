@@ -8,3 +8,9 @@ ansible/*.retry
 .claude
 __pycache__/
 *.pyc
+
+# Tests
+.venv-tests/
+.pytest_cache/
+tests/junit.xml
+**/.molecule/

@@ -1,0 +1,17 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars_files:
+    - ../../../../group_vars/all.yml
+  pre_tasks:
+    - name: Install minimal prerequisites for xray installer
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - unzip
+        state: present
+        update_cache: true
+  roles:
+    - role: xray
