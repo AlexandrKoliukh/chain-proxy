@@ -28,6 +28,12 @@ wg_private_key:     "{{ lookup('env', 'WG_VPS1_PRIVATE') }}"
 wg_peer_public_key: "{{ lookup('env', 'WG_VPS2_PUBLIC') }}"
 wg_peer_endpoint:   "{{ hostvars[groups['exit'][0]].ansible_host }}:{{ wg_listen_port }}"
 
+# TCP/8443 is the web UI port — must stay open on VPS1.
+firewall_allowed_tcp_ports:
+  - 22
+  - 443
+  - 8443
+
 # UDP/51820 must reach VPS2 — TCP/443 stays open for client Reality.
 firewall_allowed_udp_ports:
   - "{{ wg_listen_port }}"
