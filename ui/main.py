@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from typing import Annotated, Literal
 
 import uvicorn
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -18,6 +19,8 @@ from .paths import INITIAL_PASSWORD_FILE, STATIC, TEMPLATES, ensure_data_dirs
 app = FastAPI(title="chain-proxy UI")
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES))
+
+_CLIENT_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
 
 
 def _user(creds: Annotated[HTTPBasicCredentials, Depends(auth.basic)], request: Request) -> str:
@@ -165,12 +168,75 @@ async def status_page(request: Request, user: User):
 
 
 @app.get("/client", response_class=HTMLResponse)
-async def client_page(request: Request, user: User):
+async def client_redirect(request: Request, user: User):
+    return RedirectResponse(url="/clients", status_code=301)
+
+
+@app.get("/clients", response_class=HTMLResponse)
+async def clients_page(request: Request, user: User):
     cfg = cfg_mod.load()
     clients = vless.build(cfg)
+    msg = None
+    if request.query_params.get("added"):
+        msg = "Клиент добавлен. Нужен Deploy для применения изменений."
+    elif request.query_params.get("deleted"):
+        msg = "Клиент удалён. Нужен Deploy для применения изменений."
     return templates.TemplateResponse(
         "client.html",
-        _ctx(request, clients=clients, missing=vless.missing_reasons(cfg)),
+        _ctx(request, clients=clients, missing=vless.missing_reasons(cfg), message=msg),
+    )
+
+
+@app.post("/clients", response_class=HTMLResponse)
+async def add_client(request: Request, user: User, name: Annotated[str, Form()]):
+    name = name.strip()
+    cfg = cfg_mod.load()
+    if not _CLIENT_NAME_RE.match(name):
+        return templates.TemplateResponse(
+            "client.html",
+            _ctx(request, clients=vless.build(cfg), missing=vless.missing_reasons(cfg),
+                 error="Имя клиента: только буквы, цифры, - и _, до 32 символов."),
+            status_code=400,
+        )
+    if any(c.name == name for c in cfg.clients):
+        return templates.TemplateResponse(
+            "client.html",
+            _ctx(request, clients=vless.build(cfg), missing=vless.missing_reasons(cfg),
+                 error=f"Клиент «{name}» уже существует."),
+            status_code=400,
+        )
+    cfg = cfg_mod.new_client(name, cfg)
+    cfg_mod.save(cfg)
+    return RedirectResponse(url="/clients?added=1", status_code=303)
+
+
+@app.post("/clients/{name}/delete", response_class=HTMLResponse)
+async def delete_client(request: Request, user: User, name: str):
+    cfg = cfg_mod.load()
+    if len(cfg.clients) <= 1:
+        return templates.TemplateResponse(
+            "client.html",
+            _ctx(request, clients=vless.build(cfg), missing=vless.missing_reasons(cfg),
+                 error="Нельзя удалить последнего клиента."),
+            status_code=400,
+        )
+    cfg = cfg_mod.remove_client(name, cfg)
+    cfg_mod.save(cfg)
+    return RedirectResponse(url="/clients?deleted=1", status_code=303)
+
+
+@app.get("/clients/{name}/config")
+async def download_client_config(name: str, user: User):
+    cfg = cfg_mod.load()
+    entry = next((c for c in cfg.clients if c.name == name), None)
+    if entry is None:
+        raise HTTPException(404, f"Client {name!r} not found")
+    if not cfg.hosts.vps1_ip or not cfg.keys.entry_public_key or not cfg.keys.entry_short_id:
+        raise HTTPException(400, "Config not ready: missing IP or keys")
+    uri = vless._uri(entry.uuid, entry.name, cfg.hosts.vps1_ip, cfg)
+    return PlainTextResponse(
+        content=uri + "\n",
+        headers={"Content-Disposition": f'attachment; filename="vless-{entry.name}.txt"'},
     )
 
 

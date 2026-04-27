@@ -1,15 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Клиент{% endblock %}
+{% block title %}Клиенты{% endblock %}
 {% block body %}
+
 {% if missing %}
+<div class="flash warn">VLESS-ссылки недоступны: {{ missing }}.</div>
+{% endif %}
+
 <section class="card">
-  <h2>Подключение клиента</h2>
-  <div class="flash warn">Нет VLESS-link: {{ missing }}.</div>
+  <h2>Добавить клиента</h2>
+  <form method="post" action="/clients">
+    <div class="row">
+      <label style="flex:1">Имя (буквы, цифры, -, _; до 32 символов)
+        <input name="name" placeholder="alice" pattern="[a-zA-Z0-9_-]{1,32}" required>
+      </label>
+      <div style="display:flex;align-items:flex-end">
+        <button type="submit">Добавить</button>
+      </div>
+    </div>
+  </form>
 </section>
-{% else %}
+
+{% if not missing %}
 {% for c in clients %}
 <section class="card">
-  <h2>{{ c.email }}</h2>
+  <h2>
+    <span>{{ c.email }}</span>
+    <span style="display:flex;gap:8px;align-items:center">
+      <a href="/clients/{{ c.email }}/config" download
+         style="font-size:13px;color:var(--accent);text-decoration:none">Скачать .txt</a>
+      <form method="post" action="/clients/{{ c.email }}/delete"
+            style="margin:0"
+            onsubmit="return confirm('Удалить клиента «{{ c.email }}»?')">
+        <button type="submit"
+                style="background:var(--err);font-size:12px;padding:4px 10px">
+          Удалить
+        </button>
+      </form>
+    </span>
+  </h2>
   <p class="muted">Откройте Amnezia / v2rayN / NekoBox → Add → Import URL/QR.</p>
   <div class="qr-row">
     <img class="qr" src="data:image/png;base64,{{ c.qr }}" alt="QR for {{ c.email }}">
@@ -18,4 +46,5 @@
 </section>
 {% endfor %}
 {% endif %}
+
 {% endblock %}

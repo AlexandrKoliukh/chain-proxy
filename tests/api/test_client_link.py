@@ -16,7 +16,7 @@ async def test_client_page_shows_vless_link_when_keys_present(
     cfg.keys.entry_client_uuid = "11111111-1111-1111-1111-111111111111"
     cfg_mod.save(cfg)
 
-    resp = await client.get("/client", auth=BASIC)
+    resp = await client.get("/clients", auth=BASIC)
 
     assert resp.status_code == 200
     assert "vless://" in resp.text
@@ -29,7 +29,7 @@ async def test_client_page_shows_missing_reason_when_keys_absent(
     cfg_mod = ui_modules["config"]
     cfg_mod.save(cfg_mod.Config())
 
-    resp = await client.get("/client", auth=BASIC)
+    resp = await client.get("/clients", auth=BASIC)
 
     assert resp.status_code == 200
     assert "vless://" not in resp.text

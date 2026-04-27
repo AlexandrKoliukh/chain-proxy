@@ -39,15 +39,10 @@ def build(cfg: Config) -> list[dict]:
     ip = cfg.hosts.vps1_ip
     if not ip or not cfg.keys.entry_public_key or not cfg.keys.entry_short_id:
         return []
-    clients: list[tuple[str, str]] = []
-    if cfg.keys.entry_client_uuid:
-        clients.append(("admin", cfg.keys.entry_client_uuid))
-    if cfg.keys.entry_friends_uuid:
-        clients.append(("friends", cfg.keys.entry_friends_uuid))
     out = []
-    for email, uuid in clients:
-        uri = _uri(uuid, email, ip, cfg)
-        out.append({"email": email, "uri": uri, "qr": _qr_png_b64(uri)})
+    for entry in cfg.clients:
+        uri = _uri(entry.uuid, entry.name, ip, cfg)
+        out.append({"email": entry.name, "uri": uri, "qr": _qr_png_b64(uri)})
     return out
 
 

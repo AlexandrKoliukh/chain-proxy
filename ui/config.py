@@ -6,8 +6,10 @@ deploy/keys subprocesses are launched with.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
+import uuid as _uuid_mod
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
@@ -49,10 +51,17 @@ class Keys:
 
 
 @dataclass
+class ClientEntry:
+    name: str   # used as Xray email field
+    uuid: str
+
+
+@dataclass
 class Config:
     hosts: Hosts = field(default_factory=Hosts)
     reality: Reality = field(default_factory=Reality)
     keys: Keys = field(default_factory=Keys)
+    clients: list = field(default_factory=list)  # list[ClientEntry]
 
     def to_env(self) -> dict[str, str]:
         env = {
@@ -83,6 +92,10 @@ class Config:
                 "WG_VPS2_PUBLIC": self.keys.wg_vps2_public,
             }
         )
+        if self.clients:
+            env["ENTRY_CLIENTS_JSON"] = json.dumps(
+                [{"email": c.name, "id": c.uuid} for c in self.clients]
+            )
         return {k: v for k, v in env.items() if v != ""}
 
 
@@ -95,11 +108,27 @@ def load() -> Config:
     if not CONFIG_FILE.exists():
         return Config()
     raw = yaml.safe_load(CONFIG_FILE.read_text()) or {}
-    return Config(
+    clients_raw = raw.get("clients", []) or []
+    clients = [
+        ClientEntry(name=c["name"], uuid=c["uuid"])
+        for c in clients_raw
+        if isinstance(c, dict) and c.get("name") and c.get("uuid")
+    ]
+    cfg = Config(
         hosts=_from_dict(Hosts, raw.get("hosts", {})),
         reality=_from_dict(Reality, raw.get("reality", {})),
         keys=_from_dict(Keys, raw.get("keys", {})),
+        clients=clients,
     )
+    # One-time migration: promote legacy UUID key fields into the clients list
+    if not cfg.clients:
+        if cfg.keys.entry_client_uuid:
+            cfg.clients.append(ClientEntry(name="admin", uuid=cfg.keys.entry_client_uuid))
+        if cfg.keys.entry_friends_uuid:
+            cfg.clients.append(ClientEntry(name="friends", uuid=cfg.keys.entry_friends_uuid))
+        if cfg.clients:
+            save(cfg)
+    return cfg
 
 
 def save(cfg: Config) -> None:
@@ -154,4 +183,27 @@ def apply_generated_keys(cfg: Config, raw: dict[str, str]) -> Config:
     for env_key, attr in mapping.items():
         if env_key in raw:
             setattr(cfg.keys, attr, raw[env_key])
+    # Seed clients list from freshly-generated UUIDs if list is still empty
+    if not cfg.clients:
+        if cfg.keys.entry_client_uuid:
+            cfg.clients.append(ClientEntry(name="admin", uuid=cfg.keys.entry_client_uuid))
+        if cfg.keys.entry_friends_uuid:
+            cfg.clients.append(ClientEntry(name="friends", uuid=cfg.keys.entry_friends_uuid))
+    return cfg
+
+
+_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,32}$")
+
+
+def new_client(name: str, cfg: Config) -> Config:
+    if not _NAME_RE.match(name):
+        raise ValueError(f"Invalid client name: {name!r}")
+    if any(c.name == name for c in cfg.clients):
+        raise ValueError(f"Client {name!r} already exists")
+    cfg.clients.append(ClientEntry(name=name, uuid=str(_uuid_mod.uuid4())))
+    return cfg
+
+
+def remove_client(name: str, cfg: Config) -> Config:
+    cfg.clients = [c for c in cfg.clients if c.name != name]
     return cfg

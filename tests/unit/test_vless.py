@@ -15,6 +15,8 @@ def _ready_cfg(cfg_mod):
     cfg.keys.entry_short_id = "abcd1234"
     cfg.keys.entry_client_uuid = "11111111-1111-1111-1111-111111111111"
     cfg.keys.entry_friends_uuid = "22222222-2222-2222-2222-222222222222"
+    cfg.clients.append(cfg_mod.ClientEntry(name="admin",   uuid=cfg.keys.entry_client_uuid))
+    cfg.clients.append(cfg_mod.ClientEntry(name="friends", uuid=cfg.keys.entry_friends_uuid))
     return cfg
 
 
@@ -78,7 +80,7 @@ def test_build_returns_empty_when_no_public_key(ui_modules):
 def test_build_skips_empty_uuid(ui_modules):
     vless = ui_modules["vless"]
     cfg = _ready_cfg(ui_modules["config"])
-    cfg.keys.entry_friends_uuid = ""
+    cfg.clients = [c for c in cfg.clients if c.name != "friends"]
 
     clients = vless.build(cfg)
 

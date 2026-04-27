@@ -15,11 +15,13 @@ entry_short_id:    "{{ lookup('env', 'ENTRY_SHORT_ID') }}"
 # но все они делят один Reality-серверный ключ и shortId. Чтобы добавить
 # ещё одного — заведите новую env-переменную (например, ENTRY_GUEST_UUID),
 # экспортируйте её в Makefile, сгенерируйте UUID и допишите запись сюда.
-entry_clients:
-  - email: "admin"
-    id: "{{ lookup('env', 'ENTRY_CLIENT_UUID') }}"
-  - email: "friends"
-    id: "{{ lookup('env', 'ENTRY_FRIENDS_UUID') }}"
+entry_clients: >-
+  {{ lookup('env', 'ENTRY_CLIENTS_JSON') | from_json
+     if lookup('env', 'ENTRY_CLIENTS_JSON') | default('', true)
+     else [
+       {'email': 'admin',   'id': lookup('env', 'ENTRY_CLIENT_UUID')},
+       {'email': 'friends', 'id': lookup('env', 'ENTRY_FRIENDS_UUID')}
+     ] | selectattr('id') | list }}
 
 # ─── VPS1 → VPS2 (WireGuard tunnel) ───────────────────────────────
 # Xray's chain-proxy outbound is now a `freedom` proto with sockopt.mark
