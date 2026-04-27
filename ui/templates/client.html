@@ -38,7 +38,11 @@
       </form>
     </span>
   </h2>
-  <p class="muted">Откройте Amnezia / v2rayN / NekoBox → Add → Import URL/QR.</p>
+  <p class="muted">
+    <strong>v2rayN / NekoBox / Hiddify</strong> — сканируйте QR или вставьте ссылку.<br>
+    <strong>Amnezia</strong> — QR не поддерживается для сторонних серверов.
+    Откройте «+» → «Импорт VPN-конфигурации» → «Из ссылки», вставьте ссылку ниже.
+  </p>
   <div class="qr-row">
     <img class="qr" src="data:image/png;base64,{{ c.qr }}" alt="QR for {{ c.email }}">
     <textarea class="vless" readonly rows="4" onclick="this.select()">{{ c.uri }}</textarea>
