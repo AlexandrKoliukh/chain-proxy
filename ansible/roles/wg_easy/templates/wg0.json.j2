@@ -1,0 +1,21 @@
+{
+  "server": {
+    "privateKey": "{{ wg_private_key }}",
+    "publicKey": "{{ wg_public_key }}",
+    "address": "{{ wg_exit_addr }}"
+  },
+  "clients": {
+    "vps1-chain-peer": {
+      "id": "vps1-chain-peer",
+      "name": "vps1-chain",
+      "address": "{{ wg_entry_addr }}",
+      "publicKey": "{{ wg_peer_public_key }}",
+      "privateKey": null,
+      "preSharedKey": null,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:00:00.000Z",
+      "enabled": true,
+      "allowedIPs": []
+    }
+  }
+}

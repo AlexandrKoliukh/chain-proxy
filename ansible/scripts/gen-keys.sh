@@ -84,6 +84,35 @@ LINK_UUID_VAL=$(gen_uuid)
 ENTRY_SID_VAL=$(gen_sid)
 LINK_SID_VAL=$(gen_sid)
 
+WG_EASY_PASSWORD_VAL=$(openssl rand -base64 24 | tr -d '=+/' | head -c 24)
+
+# Generate bcrypt hash for wg-easy v14+ (PASSWORD_HASH env var).
+# Uses python3 bcrypt module (installed by bootstrap), falls back to passlib,
+# then to docker wg-easy wgpw as a last resort.
+gen_bcrypt() {
+  local plain="$1"
+  if PLAIN="$plain" python3 -c '
+import os, bcrypt
+print(bcrypt.hashpw(os.environ["PLAIN"].encode(), bcrypt.gensalt(rounds=12)).decode())
+' 2>/dev/null; then
+    return
+  fi
+  if PLAIN="$plain" python3 -c '
+import os; from passlib.hash import bcrypt as ph; print(ph.hash(os.environ["PLAIN"]))
+' 2>/dev/null; then
+    return
+  fi
+  if have docker; then
+    docker run --rm "ghcr.io/wg-easy/wg-easy:14" wgpw "$plain" 2>/dev/null \
+      | grep -oE '\$2[aby]\$[0-9]+\$.{53}'
+    return
+  fi
+  echo "ERROR: cannot generate bcrypt hash. Install python3-bcrypt or docker." >&2
+  exit 1
+}
+echo "Generating bcrypt hash for wg-easy password ..." >&2
+WG_EASY_PASSWORD_HASH_VAL=$(gen_bcrypt "$WG_EASY_PASSWORD_VAL")
+
 # Make sure .env exists (bootstrap from .env.example the first time).
 if [ ! -f "$ENV_FILE" ]; then
   if [ -f "$ENV_EXAMPLE" ]; then
@@ -119,9 +148,11 @@ printf 'LINK_PRIVATE_KEY=%s\n'  "$LINK_PRIV"     >> "$ENV_FILE"
 printf 'LINK_SHORT_ID=%s\n'     "$LINK_SID_VAL"  >> "$ENV_FILE"
 printf 'WG_VPS1_PRIVATE=%s\n'   "$WG_VPS1_PRIV"  >> "$ENV_FILE"
 printf 'WG_VPS1_PUBLIC=%s\n'    "$WG_VPS1_PUB"   >> "$ENV_FILE"
-printf 'WG_VPS2_PRIVATE=%s\n'   "$WG_VPS2_PRIV"  >> "$ENV_FILE"
-printf 'WG_VPS2_PUBLIC=%s\n'    "$WG_VPS2_PUB"   >> "$ENV_FILE"
-printf '%s\n' "$END_MARK"                        >> "$ENV_FILE"
+printf 'WG_VPS2_PRIVATE=%s\n'   "$WG_VPS2_PRIV"            >> "$ENV_FILE"
+printf 'WG_VPS2_PUBLIC=%s\n'    "$WG_VPS2_PUB"             >> "$ENV_FILE"
+printf 'WG_EASY_PASSWORD=%s\n'      "$WG_EASY_PASSWORD_VAL"      >> "$ENV_FILE"
+printf 'WG_EASY_PASSWORD_HASH=%s\n' "$WG_EASY_PASSWORD_HASH_VAL" >> "$ENV_FILE"
+printf '%s\n' "$END_MARK"                                   >> "$ENV_FILE"
 rm -f "$TMP_FILE"
 
 # Determine client-facing VPS1 IP for the VLESS URI preview.

@@ -48,7 +48,7 @@ firewall_allowed_tcp_ports:
 # VPS1 (entry) ──UDP/wg_listen_port──▶ VPS2 (exit). Xray on VPS1 marks
 # its chain-proxy outbound sockets with `wg_fwmark`; the kernel routes
 # those packets via wg0 using `wg_route_table`. VPS2 NATs them out.
-wg_subnet: "10.66.0.0/30"
+wg_subnet: "10.66.0.0/24"   # expanded from /30: VPS1=10.66.0.1, VPS2/server=10.66.0.2, wg-easy clients=10.66.0.3+
 wg_entry_addr: "10.66.0.1"
 wg_exit_addr:  "10.66.0.2"
 wg_listen_port: 51820

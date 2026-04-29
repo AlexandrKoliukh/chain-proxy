@@ -1,16 +1,23 @@
 ---
 # ╔════════════════════════════════════════════════════════════════╗
 # ║ VPS2 (foreign server, exit).                                   ║
-# ║ Now a thin WireGuard NAT gateway — Xray is no longer deployed  ║
-# ║ here. Receives traffic from VPS1 over wg0 and MASQUERADEs it.  ║
+# ║ WireGuard server managed by wg-easy (Docker). VPS1 is a       ║
+# ║ pre-configured peer; additional clients are added via GUI.     ║
 # ║ Values are read from environment variables (see .env).         ║
 # ╚════════════════════════════════════════════════════════════════╝
 
+# wg_private_key  = server's own WG private key (used in wg0.json preseed)
+# wg_public_key   = server's own WG public key  (used in wg0.json preseed)
+# wg_peer_public_key = VPS1's WG public key     (added as pre-configured peer)
 wg_private_key:     "{{ lookup('env', 'WG_VPS2_PRIVATE') }}"
+wg_public_key:      "{{ lookup('env', 'WG_VPS2_PUBLIC') }}"
 wg_peer_public_key: "{{ lookup('env', 'WG_VPS1_PUBLIC') }}"
+wg_easy_password:      "{{ lookup('env', 'WG_EASY_PASSWORD') }}"
+wg_easy_password_hash: "{{ lookup('env', 'WG_EASY_PASSWORD_HASH') }}"
 
-# 443 больше не нужен — клиенты подключаются только к VPS1.
+# wg-easy replaces kernel wg-quick on VPS2: same UDP/51820 port, plus web UI on TCP/51821.
 firewall_allowed_tcp_ports:
   - 22
+  - 51821      # wg-easy web UI
 firewall_allowed_udp_ports:
-  - "{{ wg_listen_port }}"
+  - "{{ wg_listen_port }}"   # 51820 — now managed by wg-easy container

@@ -39,6 +39,7 @@
           - "'tcp_congestion_control = bbr' in content"
           - "'net.core.default_qdisc = fq' in content"
           - "'net.ipv4.ip_forward = 1' in content"
+          - "'net.ipv4.conf.all.src_valid_mark = 1' in content"
 
     - name: Chrony enabled
       command: systemctl is-enabled chrony

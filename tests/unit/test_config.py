@@ -105,3 +105,65 @@ def test_apply_generated_keys_maps_env_vars_to_attrs(ui_modules):
     assert out.keys.entry_public_key == "pk"
     assert out.keys.wg_vps2_public == "wgpub2"
     assert out.keys.entry_short_id == ""
+
+
+def test_apply_generated_keys_maps_wg_easy_password(ui_modules):
+    cfg_mod = ui_modules["config"]
+    cfg = cfg_mod.Config()
+
+    out = cfg_mod.apply_generated_keys(cfg, {"WG_EASY_PASSWORD": "s3cr3t"})
+
+    assert out.keys.wg_easy_password == "s3cr3t"
+
+
+def test_apply_generated_keys_maps_wg_easy_password_hash(ui_modules):
+    cfg_mod = ui_modules["config"]
+    cfg = cfg_mod.Config()
+    fake_hash = "$2b$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+
+    out = cfg_mod.apply_generated_keys(cfg, {"WG_EASY_PASSWORD_HASH": fake_hash})
+
+    assert out.keys.wg_easy_password_hash == fake_hash
+
+
+def test_to_env_exports_wg_easy_password(ui_modules):
+    cfg_mod = ui_modules["config"]
+    cfg = cfg_mod.Config()
+    cfg.keys.wg_easy_password = "mypassword"
+
+    env = cfg.to_env()
+
+    assert env["WG_EASY_PASSWORD"] == "mypassword"
+
+
+def test_to_env_exports_wg_easy_password_hash(ui_modules):
+    cfg_mod = ui_modules["config"]
+    cfg = cfg_mod.Config()
+    fake_hash = "$2b$12$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+    cfg.keys.wg_easy_password_hash = fake_hash
+
+    env = cfg.to_env()
+
+    assert env["WG_EASY_PASSWORD_HASH"] == fake_hash
+
+
+def test_to_env_omits_empty_wg_easy_password(ui_modules):
+    cfg_mod = ui_modules["config"]
+    cfg = cfg_mod.Config()
+    # wg_easy_password defaults to ""
+
+    env = cfg.to_env()
+
+    assert "WG_EASY_PASSWORD" not in env
+    assert "WG_EASY_PASSWORD_HASH" not in env
+
+
+def test_wg_easy_password_roundtrip_via_save_load(ui_modules):
+    cfg_mod = ui_modules["config"]
+    cfg = cfg_mod.Config()
+    cfg.keys.wg_easy_password = "persistedpassword"
+    cfg_mod.save(cfg)
+
+    loaded = cfg_mod.load()
+
+    assert loaded.keys.wg_easy_password == "persistedpassword"

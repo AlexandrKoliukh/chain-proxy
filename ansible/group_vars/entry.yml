@@ -27,7 +27,11 @@ entry_clients: >-
 # Xray's chain-proxy outbound is now a `freedom` proto with sockopt.mark
 # set to `wg_fwmark`; the kernel sends those packets via wg0 to VPS2.
 wg_private_key:     "{{ lookup('env', 'WG_VPS1_PRIVATE') }}"
-wg_peer_public_key: "{{ lookup('env', 'WG_VPS2_PUBLIC') }}"
+# wg_easy role runs first and sets wg_actual_server_pubkey from the live
+# wg0.json on VPS2 — use that so stale .env keys never cause a mismatch.
+wg_peer_public_key: >-
+  {{ hostvars[groups['exit'][0]].wg_actual_server_pubkey
+     | default(lookup('env', 'WG_VPS2_PUBLIC')) }}
 wg_peer_endpoint:   "{{ hostvars[groups['exit'][0]].ansible_host }}:{{ wg_listen_port }}"
 
 # TCP/8443 is the web UI port — must stay open on VPS1.

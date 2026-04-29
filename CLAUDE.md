@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**chain-proxy** — Ansible-managed two-hop VPN chain: VLESS+Reality on the censored leg (client↔VPS1), kernel WireGuard on the inter-VPS leg (VPS1↔VPS2).
+**chain-proxy** — Ansible-managed two-hop VPN chain: VLESS+Reality on the censored leg (client↔VPS1), WireGuard on the inter-VPS leg (VPS1↔VPS2 via wg-easy).
 
 ```
 Client ──VLESS+Reality(TCP/443)──▶ VPS1 (home, entry, Xray)
@@ -18,12 +18,18 @@ Client ──VLESS+Reality(TCP/443)──▶ VPS1 (home, entry, Xray)
                                                   WireGuard UDP/51820
                                                           │
                                                           ▼
-                                                  VPS2 (foreign, exit) wg0
+                                                  VPS2 wg-easy (Docker) wg0
                                                           │
                                                   iptables MASQUERADE → Internet
+
+Direct WireGuard client ──UDP/51820──▶ VPS2 wg-easy GUI (TCP/51821)
 ```
 
-VPS1 (the home server, placed inside RU) terminates the client's Reality session, sends Russian destinations out locally (so Yandex/VK/etc. see a local RU IP), and forwards the rest to VPS2 over a kernel WireGuard tunnel. **VPS2 no longer runs Xray** — it is a thin WG NAT gateway. Language: Ansible + Jinja2 templates + bash. No application code.
+VPS1 (the home server, placed inside RU) terminates the client's Reality session, sends Russian destinations out locally (so Yandex/VK/etc. see a local RU IP), and forwards the rest to VPS2 over a WireGuard tunnel. **VPS2 runs wg-easy** (Docker container) — it is the WireGuard server for both the chain tunnel and direct client connections. VPS1 is a pre-configured peer in wg-easy; additional clients can be added via the wg-easy GUI at `http://<VPS2>:51821`. Language: Ansible + Jinja2 templates + bash. No application code.
+
+**wg-easy credentials**: shown in the UI at `/settings → WireGuard Admin GUI`. Generated automatically by «Сгенерировать ключи» button.
+
+**wg-easy password rotation**: either use the wg-easy GUI Settings → Change Password, OR: `ssh root@$IP_VPS2 'rm /etc/wg-easy/wg0.json'` → «Деплой» in UI (reseed from new `WG_EASY_PASSWORD`). The `wg0.json` preseed is only applied on first install (`force: false`).
 
 ## Common commands
 
@@ -54,16 +60,17 @@ Run a single role/task: `ansible-playbook -i ansible/inventory.yml ansible/playb
 **Source of truth for secrets is `.env`**, not inventory. `Makefile` exports env vars; `ansible/group_vars/*.yml` pulls them via `lookup('env', ...)`. Never hardcode UUIDs/keys in group_vars or templates — they must read from the environment.
 
 - `ansible/inventory.yml` — two groups (`entry`, `exit`), each with one host. `ansible_host` is read from `IP_VPS1` / `IP_VPS2`.
-- `ansible/playbooks/site.yml` — three plays: baseline on `all` (`common` + `wireguard` roles), `xray` + `xray_entry` on `entry`, then a localhost play that prints the `vless://` connection URI assembled from `hostvars`. **`exit` no longer runs Xray.**
+- `ansible/playbooks/site.yml` — four plays: (1) baseline `common` on `all`, (2) `wireguard` + `xray` + `xray_entry` on `entry` (VPS1 only), (3) `wg_easy` on `exit` (VPS2 only), (4) localhost debug output with VLESS URIs and wg-easy GUI URL. **`exit` no longer runs Xray or kernel wg-quick.**
 - `ansible/group_vars/all.yml` — shared knobs: `reality_dest_host` (SNI being impersonated), `xray_*` paths, firewall ports, geodata cron, and the inter-VPS WG block (`wg_subnet`, `wg_listen_port`, `wg_fwmark`, `wg_route_table`, …).
 - `ansible/group_vars/entry.yml` / `exit.yml` — load the matching `ENTRY_*` and `WG_VPS{1,2}_*` secrets from env. The legacy `LINK_*` Reality keys are still produced by `gen-keys.sh` but are no longer consumed (kept for git-revert rollback to the all-Reality chain).
 - `ansible/roles/`:
   - `common` — OS updates, UFW/iptables firewall (TCP + UDP via `firewall_allowed_{tcp,udp}_ports`), chrony (Reality requires accurate clocks — any skew >30s breaks it), BBR + buffer/MTU sysctl tuning.
   - `xray` — install Xray via XTLS `install-release.sh`, download geoip/geosite assets, systemd unit, weekly geodata refresh cron. After XTLS `install-geodata` runs, `geoip.dat` is **overwritten** with the [hydraponique/roscomvpn-geoip](https://github.com/hydraponique/roscomvpn-geoip) release (sha256-verified) — that build merges three independent geo-sources and exposes categories `geoip:direct` (RU + BY + curated Yandex/VK/Mail.Ru/CDNVideo CIDRs), `geoip:whitelist` (~4k CIDRs of RU hosting/cloud/DNS that public geoip sources mislabel as foreign — Yandex Cloud, Selectel, VK Cloud, Yandex DNS, dynamic resolves), and `geoip:private`. `geosite.dat` stays from XTLS. Toggle via `roscomvpn_geoip_enabled`. Applied **only on `entry`** now. Xray logs go to **stdout/stderr → journald** (no log files). Use `journalctl -u xray` — there is intentionally no `/var/log/xray/*.log`.
   - `xray_entry` — renders VPS1 `config.json`: inbound VLESS+Reality on 443, router rules (geosite:category-ru/yandex/vk/mailru + geoip:direct + geoip:whitelist → `direct`, geoip:private → `block`, default → `chain-proxy`), outbound `chain-proxy` is a `freedom` proto with `streamSettings.sockopt.mark = wg_fwmark` so the kernel routes those sockets via wg0.
-  - `wireguard` — installs `wireguard`/`wireguard-tools`, renders `/etc/wireguard/wg0.conf` (template branches on `inventory_hostname in groups['entry']`), opens UDP/`wg_listen_port` in UFW, enables `wg-quick@wg0`. On VPS1 the PostUp installs `ip rule add fwmark <wg_fwmark> lookup <wg_route_table>` and `default dev wg0` in that table; on VPS2 PostUp adds FORWARD + MASQUERADE so traffic egresses the public iface.
+  - `wireguard` — applied to `entry` only. Installs `wireguard`/`wireguard-tools`, renders `/etc/wireguard/wg0.conf` (VPS1 side: `Table = off` + fwmark PostUp rules, subnet `/24`), opens UDP/`wg_listen_port` in UFW, enables `wg-quick@wg0`. VPS2 no longer uses this role — wg-easy manages its own WG interface.
+  - `wg_easy` — **new, applied to `exit` only**. Installs Docker on VPS2, stops+disables kernel `wg-quick@wg0`, deploys `ghcr.io/wg-easy/wg-easy:14` container via `community.docker`. On first install: preseeds `/etc/wg-easy/wg0.json` with server keypair and VPS1 as pre-configured peer. On re-deploy: idempotent — if container exists, does not recreate; only ensures VPS1 peer is present in `wg0.json`. Web GUI at TCP/51821. Container has `NET_ADMIN` capability and `network_mode: host`. Config persists in `/etc/wg-easy/` bind-mounted into container as `/etc/wireguard/`.
   - `xray_exit` — **legacy, no longer in any play**. Kept on disk so `git revert` of the WG migration restores the old all-Reality chain.
-- `ansible/scripts/gen-keys.sh` — generates UUIDs (uuidgen/python), short IDs (openssl), two x25519 keypairs (via local `xray` binary, or fallback to `docker`/`podman` with `ghcr.io/xtls/xray-core`), and two WireGuard keypairs (`wg genkey | wg pubkey` or fallback container). Writes a block between `# === chain-proxy keys ...` markers in `.env`, replacing any previous block. Rerunning invalidates both the client VLESS link AND the WG handshake.
+- `ansible/scripts/gen-keys.sh` — generates UUIDs (uuidgen/python), short IDs (openssl), two x25519 keypairs (via local `xray` binary, or fallback to `docker`/`podman` with `ghcr.io/xtls/xray-core`), two WireGuard keypairs (`wg genkey | wg pubkey` or fallback container), and a random `WG_EASY_PASSWORD`. Writes a block between `# === chain-proxy keys ...` markers in `.env`, replacing any previous block. Rerunning invalidates the client VLESS link and the WG handshake. The wg-easy password is NOT automatically rotated on VPS2 — see password rotation note above.
 
 **Two key sets**: `ENTRY_*` (Reality x25519) secures client↔VPS1; `WG_VPS1_*` / `WG_VPS2_*` (WireGuard Curve25519) secure VPS1↔VPS2. Mixing them silently breaks the handshake (connection just stalls). The legacy `LINK_*` Reality pair is no longer used by the active config.
 
@@ -215,7 +222,12 @@ Symptom: client connects via VLESS-link but **all internet stops working**. Walk
 1. **Is Xray actually running on VPS1?** `ssh root@$IP_VPS1 'systemctl is-active xray && journalctl -u xray -n 30 --no-pager'`. If `failed`, the rest doesn't matter — fix Xray first. Common cause: misrendered `config.json` after a template change (run `make xray-test`). Logs go to journald, not files.
 2. **Is the WG tunnel up?** `make wg-show`. Both ends must show `latest handshake: <Ns ago>` with N < ~3 min. If never, suspect UDP/51820 blocked (hoster firewall outside UFW), wrong peer pubkey, or clock skew.
 3. **Does VPS1 actually push data into the tunnel?** From VPS1: `curl --interface wg0 -s --max-time 10 https://api.ipify.org`. Must return VPS2's public IP. If this works but the client still has no internet, the bug is upstream of wg0 (Xray's `sockopt.mark` not being applied, fwmark rule missing, etc.) — check `ip route get 8.8.8.8 mark 0xff` returns `dev wg0`.
-4. **Are forwarded packets surviving on VPS2?** `ssh root@$IP_VPS2 'iptables -nvL FORWARD --line-numbers | head -5; iptables -t nat -nvL POSTROUTING | grep 10.66'`. The two `wg0` ACCEPT rules must be at positions 1–2 (above any DOCKER chain) and have non-zero `pkts` while the client is generating traffic. The MASQUERADE rule for `10.66.0.0/30` must also have non-zero `pkts`. If counters stay 0 while client tries to load a site → packets never reach FORWARD on VPS2 (most likely Xray on VPS1 isn't sending — go back to step 1).
+4. **Are forwarded packets surviving on VPS2?** FORWARD/MASQUERADE rules are now managed by the **wg-easy container** (not kernel wg-quick PostUp). Check:
+   - `ssh root@$IP_VPS2 'docker ps --filter name=wg-easy'` — container must be Up.
+   - `ssh root@$IP_VPS2 'docker exec wg-easy iptables -nvL FORWARD | head -10'` — must have ACCEPT rules for wg0 with non-zero `pkts`.
+   - `ssh root@$IP_VPS2 'docker exec wg-easy iptables -t nat -nvL POSTROUTING | head -5'` — must have MASQUERADE rule for `10.66.0.0/24`.
+   - `ssh root@$IP_VPS2 'docker logs wg-easy --tail 50'` — wg-easy startup log shows any WireGuard errors.
+   If counters stay 0 → packets never reach FORWARD on VPS2 (most likely Xray on VPS1 isn't sending — go back to step 1).
 5. **`tcpdump -ni wg0` on VPS1 with the client actively loading a site** is the fastest single check that cuts through: if it shows IP packets `10.66.0.1.* > <public-ip>.443: ...`, the entire mark→route→tunnel path is working. If empty, Xray isn't pushing traffic.
 
 A red herring worth memorising: `ping 10.66.0.2` from VPS1 over the tunnel **does not work** with the current config (ICMP to the peer's WG addr is dropped) — that is normal and not evidence of a broken tunnel. Use `curl --interface wg0` instead for liveness checks.

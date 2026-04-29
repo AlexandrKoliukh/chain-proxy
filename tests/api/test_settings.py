@@ -66,3 +66,37 @@ async def test_post_settings_does_not_clear_password_on_empty_submit(
     )
 
     assert cfg_mod.load().hosts.vps2_password == "preserved"
+
+
+async def test_settings_shows_wg_easy_panel_with_credentials(client, ui_modules, initial_password):
+    """Settings page shows wg-easy URL + password when wg_easy_password is set."""
+    cfg_mod = ui_modules["config"]
+    cfg = cfg_mod.Config()
+    cfg.hosts.vps2_ip = "1.2.3.4"
+    cfg.keys.wg_easy_password = "hunter2"
+    cfg_mod.save(cfg)
+
+    resp = await client.get("/settings", auth=BASIC)
+
+    assert resp.status_code == 200
+    assert "http://1.2.3.4:51821" in resp.text
+    assert "hunter2" in resp.text
+    assert "admin" in resp.text
+
+
+async def test_settings_shows_placeholder_when_wg_easy_password_missing(
+    client, ui_modules, initial_password
+):
+    """Settings page shows prompt to generate keys when wg_easy_password is empty."""
+    cfg_mod = ui_modules["config"]
+    cfg = cfg_mod.Config()
+    cfg.hosts.vps2_ip = "1.2.3.4"
+    # wg_easy_password = "" (default)
+    cfg_mod.save(cfg)
+
+    resp = await client.get("/settings", auth=BASIC)
+
+    assert resp.status_code == 200
+    assert "Сгенерировать ключи" in resp.text
+    # URL should not appear when there's no password
+    assert "51821" not in resp.text

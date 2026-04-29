@@ -48,6 +48,8 @@ class Keys:
     wg_vps1_public: str = ""
     wg_vps2_private: str = ""
     wg_vps2_public: str = ""
+    wg_easy_password: str = ""
+    wg_easy_password_hash: str = ""
 
 
 @dataclass
@@ -90,6 +92,8 @@ class Config:
                 "WG_VPS1_PUBLIC": self.keys.wg_vps1_public,
                 "WG_VPS2_PRIVATE": self.keys.wg_vps2_private,
                 "WG_VPS2_PUBLIC": self.keys.wg_vps2_public,
+                "WG_EASY_PASSWORD": self.keys.wg_easy_password,
+                "WG_EASY_PASSWORD_HASH": self.keys.wg_easy_password_hash,
             }
         )
         if self.clients:
@@ -179,6 +183,8 @@ def apply_generated_keys(cfg: Config, raw: dict[str, str]) -> Config:
         "WG_VPS1_PUBLIC": "wg_vps1_public",
         "WG_VPS2_PRIVATE": "wg_vps2_private",
         "WG_VPS2_PUBLIC": "wg_vps2_public",
+        "WG_EASY_PASSWORD": "wg_easy_password",
+        "WG_EASY_PASSWORD_HASH": "wg_easy_password_hash",
     }
     for env_key, attr in mapping.items():
         if env_key in raw:

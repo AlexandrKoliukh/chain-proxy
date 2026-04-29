@@ -39,12 +39,13 @@ apt-get update -qq
 apt-get install -y --no-install-recommends \
   ca-certificates curl git jq openssl qrencode sshpass \
   docker.io docker-compose-v2 \
-  ansible-core python3 python3-yaml >/dev/null
+  ansible-core python3 python3-yaml \
+  python3-passlib python3-bcrypt python3-docker >/dev/null
 
 systemctl enable --now docker >/dev/null
 
-log "установка Ansible-коллекций (community.general, ansible.posix)"
-ansible-galaxy collection install community.general ansible.posix --upgrade -p /usr/share/ansible/collections
+log "установка Ansible-коллекций (community.general, ansible.posix, community.docker)"
+ansible-galaxy collection install community.general ansible.posix community.docker --upgrade -p /usr/share/ansible/collections
 
 log "git clone $REPO_URL → $INSTALL_DIR (branch $REPO_BRANCH)"
 if [ -d "$INSTALL_DIR/.git" ]; then

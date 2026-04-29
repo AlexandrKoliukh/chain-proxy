@@ -1,0 +1,201 @@
+---
+# wg-easy: WireGuard GUI on VPS2 for direct client connections.
+#
+# Topology after this role:
+#   VPS1 (kernel wg0, 10.66.0.1) ──UDP/51820──▶ wg-easy (Docker, 10.66.0.2)
+#   Direct clients                ──UDP/51820──▶ wg-easy (GUI at TCP/51821)
+#
+# Idempotency: if a container named "wg-easy" already exists, it is left as-is.
+# VPS1 peer is ensured to be present in wg0.json; wg-easy restarts only if changed.
+
+- name: Validate wg-easy variables are populated
+  assert:
+    that:
+      - wg_private_key     | length > 0
+      - wg_public_key      | length > 0
+      - wg_peer_public_key | length > 0
+      - wg_easy_password_hash | length > 0
+    fail_msg: >-
+      Missing WG_VPS2_PRIVATE, WG_VPS2_PUBLIC, WG_VPS1_PUBLIC or WG_EASY_PASSWORD_HASH.
+      Run 'Generate keys' in the UI (or `make gen-keys`) and redeploy.
+
+# ─── Docker ────────────────────────────────────────────────────────────────
+- name: Check if Docker is already installed
+  stat:
+    path: /usr/bin/docker
+  register: _docker_binary
+
+- name: Install docker.io and python3-docker (for community.docker module)
+  apt:
+    name:
+      - docker.io
+      - python3-docker
+    state: present
+    install_recommends: false
+    update_cache: true
+  when: not _docker_binary.stat.exists
+
+- name: Ensure docker service is enabled and running
+  systemd:
+    name: docker
+    enabled: true
+    state: started
+
+# ─── Firewall ──────────────────────────────────────────────────────────────
+- name: Open wg-easy WireGuard port in UFW
+  ufw:
+    rule: allow
+    port: "{{ wg_listen_port }}"
+    proto: udp
+  when: firewall_enabled | default(true)
+
+- name: Open wg-easy web UI port in UFW
+  ufw:
+    rule: allow
+    port: "{{ wg_easy_ui_port }}"
+    proto: tcp
+  when: firewall_enabled | default(true)
+
+# ─── Stop kernel wg-quick on VPS2 (replaced by wg-easy container) ──────────
+- name: Disable and stop kernel wg-quick@wg0 (wg-easy takes over)
+  systemd:
+    name: "wg-quick@wg0"
+    enabled: false
+    state: stopped
+  failed_when: false    # no-op if service doesn't exist / already stopped
+
+- name: Back up kernel wg0.conf (preserves rollback option)
+  command: mv /etc/wireguard/wg0.conf /etc/wireguard/wg0.conf.bak
+  args:
+    creates: /etc/wireguard/wg0.conf.bak
+    removes: /etc/wireguard/wg0.conf
+
+# ─── Persistent storage for wg-easy ────────────────────────────────────────
+- name: Ensure /etc/wg-easy directory exists (persistent config volume)
+  file:
+    path: /etc/wg-easy
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# ─── Preseed wg0.json on first install only ────────────────────────────────
+# `force: false` guarantees we never overwrite wg-easy's own state once it has
+# written wg0.json itself.
+- name: Render wg0.json preseed (only on first install, never overwrite)
+  template:
+    src: wg0.json.j2
+    dest: /etc/wg-easy/wg0.json
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+
+# ─── Deploy wg-easy container ──────────────────────────────────────────────
+# `docker_container` is idempotent: it compares declared config against the
+# running container and only recreates when the spec changes (e.g. when we
+# remove/add a sysctl, env var, or capability). The bind-mount on /etc/wg-easy
+# preserves user state across recreates.
+- name: Deploy wg-easy container (idempotent — recreates if spec changed)
+  community.docker.docker_container:
+    name: wg-easy
+    image: "{{ wg_easy_image }}"
+    state: started
+    restart_policy: unless-stopped
+    network_mode: host
+    capabilities:
+      - NET_ADMIN
+      - SYS_MODULE
+    # net.ipv4.ip_forward and net.ipv4.conf.all.src_valid_mark are set on the host
+    # by the common role — Docker forbids setting host-namespace sysctls when
+    # network_mode=host.
+    volumes:
+      - /etc/wg-easy:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    env:
+      WG_HOST: "{{ ansible_host }}"
+      WG_PORT: "{{ wg_listen_port | string }}"
+      PORT: "{{ wg_easy_ui_port | string }}"
+      WG_DEFAULT_ADDRESS: "10.66.0.x"
+      WG_DEFAULT_DNS: "1.1.1.1, 8.8.8.8"
+      WG_PERSISTENT_KEEPALIVE: "25"
+      PASSWORD_HASH: "{{ wg_easy_password_hash }}"
+      # wg-easy v14 always writes MASQUERADE with a hardcoded/misdetected iface.
+      # WG_POST_UP runs after wg-easy's own iptables setup: remove the wrong rule
+      # and add one targeting the actual default-route interface (enp0s3, ens3, etc).
+      WG_POST_UP: >-
+        WAN=$(ip -4 route show default | head -1 | awk '{print $5}');
+        iptables -t nat -D POSTROUTING -o eth0 -s {{ wg_subnet }} -j MASQUERADE 2>/dev/null || true;
+        iptables -t nat -A POSTROUTING -o $WAN -s {{ wg_subnet }} -j MASQUERADE
+      WG_POST_DOWN: >-
+        WAN=$(ip -4 route show default | head -1 | awk '{print $5}');
+        iptables -t nat -D POSTROUTING -o $WAN -s {{ wg_subnet }} -j MASQUERADE 2>/dev/null || true
+
+# ─── Wait for wg-easy to write wg0.json ────────────────────────────────────
+- name: Wait for wg0.json to appear (wg-easy initialises it on first start)
+  wait_for:
+    path: /etc/wg-easy/wg0.json
+    timeout: 60
+
+# ─── Ensure VPS1 peer is present in wg0.json ───────────────────────────────
+# Works for both fresh install (preseed may or may not have wg0.json yet
+# depending on timing) and existing wg-easy.
+- name: Check if VPS1 peer already exists in wg0.json
+  shell: |
+    python3 -c "
+    import json, sys
+    data = json.load(open('/etc/wg-easy/wg0.json'))
+    clients = data.get('clients', {})
+    pubkey = '{{ wg_peer_public_key }}'
+    found = any(c.get('publicKey') == pubkey for c in clients.values())
+    print('yes' if found else 'no')
+    "
+  register: _vps1_peer_check
+  changed_when: false
+
+- name: Add VPS1 as pre-configured peer in wg0.json (if missing)
+  shell: |
+    python3 << 'EOF'
+    import json, datetime
+
+    path = '/etc/wg-easy/wg0.json'
+    with open(path) as f:
+        data = json.load(f)
+
+    clients = data.setdefault('clients', {})
+    peer_id = 'vps1-chain-peer'
+    now = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.000Z')
+
+    clients[peer_id] = {
+        'id':           peer_id,
+        'name':         'vps1-chain',
+        'address':      '{{ wg_entry_addr }}',
+        'publicKey':    '{{ wg_peer_public_key }}',
+        'privateKey':   None,
+        'preSharedKey': None,
+        'createdAt':    now,
+        'updatedAt':    now,
+        'enabled':      True,
+        'allowedIPs':   [],
+    }
+
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=2)
+    print('peer added')
+    EOF
+  when: _vps1_peer_check.stdout == 'no'
+  notify: restart wg-easy
+
+# ─── Export actual server pubkey as host fact for VPS1 wireguard role ───────
+# wg0.json is the source of truth: if the container existed before this deploy
+# (force: false skipped preseed), its keypair differs from .env. Reading here
+# ensures VPS1's wg0.conf [Peer] always gets the key wg-easy actually uses.
+- name: Read actual server public key from wg0.json
+  shell: >
+    python3 -c "import json; print(json.load(open('/etc/wg-easy/wg0.json'))['server']['publicKey'])"
+  register: _wg_server_pubkey
+  changed_when: false
+
+- name: Set wg_actual_server_pubkey fact (used by wireguard role on VPS1)
+  set_fact:
+    wg_actual_server_pubkey: "{{ _wg_server_pubkey.stdout | trim }}"

@@ -12,22 +12,30 @@
 #                                          WireGuard UDP/51820
 #                                                  │
 #                                                  ▼
-#                                          VPS2 wg0 → MASQUERADE → Internet
+#                                          VPS2 wg-easy (Docker) → MASQUERADE → Internet
+#                                          also accepts direct WireGuard clients via GUI
 # ═══════════════════════════════════════════════════════════════════
 
-- name: Baseline — all nodes (firewall, sysctl, WireGuard tunnel)
+- name: Baseline — all nodes (firewall, sysctl)
   hosts: all
   become: true
   gather_facts: true
   roles:
     - common
-    - wireguard
 
-- name: Configure VPS1 (entry, home) — Xray VLESS+Reality
+- name: Configure VPS2 (exit, foreign) — wg-easy WireGuard GUI + NAT gateway
+  hosts: exit
+  become: true
+  gather_facts: true
+  roles:
+    - wg_easy
+
+- name: Configure VPS1 (entry, home) — kernel WireGuard + Xray VLESS+Reality
   hosts: entry
   become: true
   gather_facts: false
   roles:
+    - wireguard
     - xray
     - xray_entry
 
@@ -80,9 +88,14 @@
           - ""
           - "SERVICE HEALTH:"
           - ""
-          - "  make status     # systemctl status xray + wg-quick@wg0"
-          - "  make logs       # journalctl -u xray -n 50 (entry only)"
-          - "  make wg-show    # wg show on both — handshake must be < 3 min ago"
+          - "  make status       # systemctl status xray (entry) + wg handshake"
+          - "  make logs         # journalctl -u xray -n 50 (entry only)"
+          - "  make wg-show      # wg show on entry — handshake must be < 3 min ago"
+          - ""
+          - "WG-EASY GUI (direct clients on VPS2):"
+          - ""
+          - "  http://{{ hostvars[groups['exit'][0]].ansible_host }}:51821"
+          - "  Username: admin   Password: see UI /settings → WireGuard Admin GUI"
           - ""
           - "DEBUG TIPS:"
           - ""
@@ -92,6 +105,11 @@
           - "  • If non-RU traffic egresses via VPS1 (wrong IP), the fwmark rule didn't install:"
           - "      ssh root@\\$IP_VPS1 'ip rule | grep fwmark'"
           - "      ssh root@\\$IP_VPS1 'ip route show table 100'"
+          - "  • If VPS2 wg-easy container is not running:"
+          - "      ssh root@\\$IP_VPS2 'docker ps --filter name=wg-easy'"
+          - "      ssh root@\\$IP_VPS2 'docker logs wg-easy --tail 50'"
+          - "  • FORWARD/MASQUERADE rules now managed by wg-easy container (not PostUp):"
+          - "      ssh root@\\$IP_VPS2 'docker exec wg-easy iptables -nvL FORWARD'"
           - "  • If RU routing is broken, verify geodata is present on VPS1:"
           - "      ansible -i ansible/inventory.yml entry -b -a 'ls -la /usr/local/share/xray/'"
           - "═══════════════════════════════════════════════════════════════"

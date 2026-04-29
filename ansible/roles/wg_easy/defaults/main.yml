@@ -1,0 +1,9 @@
+---
+wg_easy_enabled: true
+# v14 uses /etc/wireguard/wg0.json for config (JSON preseed works cleanly).
+# v15+ switched to SQLite — upgrade path: remove preseed and use API instead.
+wg_easy_image: "ghcr.io/wg-easy/wg-easy:14"
+wg_easy_ui_port: 51821
+# WireGuard port stays at wg_listen_port (51820) — no change needed on VPS1 side.
+# Server IP = wg_exit_addr (10.66.0.2), VPS1 peer = wg_entry_addr (10.66.0.1).
+# wg-easy clients get addresses from 10.66.0.3 onwards (wg_subnet = 10.66.0.0/24).

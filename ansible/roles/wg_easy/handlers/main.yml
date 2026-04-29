@@ -1,0 +1,6 @@
+---
+- name: restart wg-easy
+  community.docker.docker_container:
+    name: wg-easy
+    state: started
+    restart: true

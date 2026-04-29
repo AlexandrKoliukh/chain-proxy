@@ -76,6 +76,42 @@
 </section>
 
 <section class="card">
+  <h2>WireGuard Admin GUI (wg-easy)</h2>
+  <p>
+    Панель управления WireGuard на VPS2. Добавляйте клиентов для прямого
+    подключения к VPS2. Пароль генерируется вместе с остальными ключами.
+  </p>
+  {% if cfg.keys.wg_easy_password %}
+  <dl class="kv">
+    <dt>URL</dt>
+    <dd>
+      <a href="http://{{ cfg.hosts.vps2_ip }}:51821" target="_blank" rel="noopener">
+        http://{{ cfg.hosts.vps2_ip }}:51821
+      </a>
+    </dd>
+    <dt>Username</dt>
+    <dd><code>admin</code></dd>
+    <dt>Password</dt>
+    <dd>
+      <input type="password" value="{{ cfg.keys.wg_easy_password }}" readonly
+             id="wg-easy-pw" style="font-family:monospace;width:22ch">
+      <button type="button"
+              onclick="var el=document.getElementById('wg-easy-pw');
+                       el.type=el.type==='password'?'text':'password'">
+        Показать
+      </button>
+      <button type="button"
+              onclick="navigator.clipboard.writeText('{{ cfg.keys.wg_easy_password }}')">
+        Скопировать
+      </button>
+    </dd>
+  </dl>
+  {% else %}
+  <p class="muted">Нажмите «Сгенерировать ключи» выше — пароль создастся автоматически.</p>
+  {% endif %}
+</section>
+
+<section class="card">
   <h2>Сменить пароль UI</h2>
   <form method="post" action="/settings/password">
     <label>Новый пароль (≥8 символов)
